@@ -1,0 +1,32 @@
+{
+  "name": "syncusers-testing-mvp",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@gradio/client": "^2.0.4",
+    "@huggingface/hub": "^2.10.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "lucide-react": "^0.555.0",
+    "plotly.js": "2.30.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-is": "^19.2.4",
+    "recharts": "^3.5.0",
+    "vite-plugin-node-polyfills": "^0.25.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "playwright": "^1.51.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
