@@ -24,7 +24,7 @@ Nova Act should no longer appear as a separate Amazon-branded product in the dep
 
 ## Information Architecture
 
-Use a persistent top-level shell with a left rail on desktop and a bottom tab bar on mobile. Every major frontend becomes a top-level tab in this shell.
+Use a persistent top-level shell with a **right navigation bar** on desktop and a bottom tab bar on mobile. Every major frontend becomes a top-level tab in this shell. Do not create a separate Output tab for logs or artifacts; output-oriented surfaces should live in the contextual right-side navigation and inspector area for the active tab.
 
 | Tab | User-facing name | Purpose | Rendering model |
 | --- | --- | --- | --- |
@@ -40,15 +40,16 @@ Use a persistent top-level shell with a left rail on desktop and a bottom tab ba
 ### Desktop layout
 
 - Fixed top bar with UserSync logo, active Space/user identity, environment pill, and deploy health.
-- Left rail with icon + label tabs.
+- **Right navigation bar** with icon + label entries for all top-level tabs: Home, Simulation, Act Studio, Browser Live, Runs, and Settings.
 - Main content area with a route-level header that shows the selected tab title, description, primary action, and breadcrumbs when needed.
-- Optional right inspector drawer for run metadata, logs, selected browser element details, or generated artifacts.
+- Contextual right-side inspector area below or adjacent to the right navigation for run metadata, logs, selected browser element details, generated artifacts, and other output surfaces.
+- No separate Output tab: logs, screenshots, recordings, traces, and exports should be reachable from the active tab's right-side inspector and from the Runs tab.
 
 ### Mobile layout
 
 - Compact top bar with UserSync logo and user/avatar menu.
 - Bottom tab bar with the four most important tabs: Home, Simulation, Act Studio, Runs.
-- Browser Live and Settings move into a More menu.
+- Browser Live and Settings move into a More menu, while output/log views remain contextual to the active tab rather than becoming a standalone Output tab.
 
 ### Switching behavior
 
@@ -121,7 +122,7 @@ This hosts Mindwalk UI rendering and live session observation.
 - Browser viewport centered in a card with a dark frame
 - Session controls: pause, resume, stop, screenshot, record
 - Element inspector drawer
-- Live event log underneath or in the right rail
+- Live event log in the contextual right-side inspector, not as a separate Output tab
 - Clear warning when the user should not manually interact with an active automation run
 
 ### Runs
@@ -130,7 +131,7 @@ Unify artifacts across Simulation, Act Studio, and Browser Live.
 
 - Filterable run table
 - Status, owner, created time, duration, source tab, and deployment environment
-- Detail page with trace, transcript, video, screenshots, exported files, and retry/promote actions
+- Detail page with trace, transcript, video, screenshots, exported files, and retry/promote actions; these artifacts are also surfaced contextually from the right inspector while a run is active
 
 ### Settings
 
@@ -170,7 +171,7 @@ Recommended routes:
 
 ### Phase 1: Shippable shell
 
-- Add shared `AppShell`, `TopBar`, `SideNav`, and `MobileTabBar` components.
+- Add shared `AppShell`, `TopBar`, `RightNav`, contextual `RightInspector`, and `MobileTabBar` components.
 - Move current view switching into route-like tab state.
 - Rename visible product labels from SyncUsers/Nova Act to UserSync/UserSync Act.
 - Add placeholder cards for Act Studio, Browser Live, Runs, and Settings.
@@ -211,7 +212,7 @@ Add a split workspace to the Act Studio tab:
 
 - **Left panel:** workflow prompt, target URL, secrets/config readiness, run controls, and step timeline.
 - **Center panel:** shared testing screen with the selected viewport frame.
-- **Right panel:** inspector for logs, element metadata, screenshots, trace events, and human-review notes.
+- **Right panel:** combined navigation + inspector area, with top-level tab navigation in the right nav bar and contextual logs, element metadata, screenshots, trace events, and human-review notes beneath it.
 
 The center panel should become the primary focus while a run is active. On smaller screens, the panels collapse into stacked drawers so the shared test screen remains easy to inspect.
 
@@ -253,7 +254,7 @@ The Act Studio frontend should render `streamUrl` when live streaming is availab
 
 ### Responsive layout rules
 
-- **Desktop/web:** use a three-column Act Studio layout with a sticky shared-screen toolbar.
+- **Desktop/web:** use a three-column Act Studio layout with the shared testing screen in the center and the all-tabs right nav plus contextual inspector on the right.
 - **Tablet:** keep the test screen above the timeline, move the inspector into a slide-over drawer, and keep run controls in a sticky top bar.
 - **Mobile:** show one panel at a time with tabs for Screen, Steps, and Logs; keep pause/stop/screenshot actions in a thumb-friendly bottom bar.
 - **All sizes:** preserve the active run and viewport selection when switching to other top-level UserSync tabs.
