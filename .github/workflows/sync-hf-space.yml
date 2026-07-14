@@ -3,7 +3,7 @@ name: Sync UserSync app to Hugging Face Space
 on:
   push:
     branches:
-      - main
+      - codex/design-unified-frontend-ui-for-usersync
     paths:
       - "UserSync/**"
       - ".github/workflows/sync-hf-space.yml"
