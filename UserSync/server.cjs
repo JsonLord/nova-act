@@ -214,6 +214,135 @@ app.get('/api/list-data', (req, res) => {
   }
 });
 
+app.get('/api-docs', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>API Documentation</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+        h1 { color: #111; border-bottom: 2px solid #eaecef; padding-bottom: 10px; }
+        h2 { color: #2f363d; margin-top: 30px; border-bottom: 1px solid #eaecef; padding-bottom: 5px; }
+        code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; background-color: #f6f8fa; padding: .2em .4em; border-radius: 3px; font-size: 85%; }
+        pre { background-color: #f6f8fa; padding: 16px; overflow: auto; border-radius: 6px; }
+        .method { font-weight: bold; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-right: 10px; color: #fff; }
+        .get { background-color: #2ea44f; }
+        .post { background-color: #0366d6; }
+        .endpoint { background-color: #fafbfc; border: 1px solid #e1e4e8; border-radius: 6px; padding: 15px; margin-bottom: 20px; }
+      </style>
+    </head>
+    <body>
+      <h1>API Documentation</h1>
+      <p>This page lists all the available functional and mandatory API endpoints of the application.</p>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /health</h2>
+        <p><strong>Purpose:</strong> Simple healthcheck endpoint returning HTTP 200 OK. Mandatory for Hugging Face Space startup.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>OK</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /api-docs</h2>
+        <p><strong>Purpose:</strong> Documents all available API endpoints.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>HTML page displaying this documentation.</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method post">POST</span> /api/craft</h2>
+        <p><strong>Purpose:</strong> Help craft marketing and social media content based on input content and variation using Blablador API.</p>
+        <p><strong>Request Example:</strong></p>
+        <pre><code>{
+  "content": "hello world",
+  "variation": "social media post"
+}</code></pre>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>{
+  "result": "..."
+}</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /api/config</h2>
+        <p><strong>Purpose:</strong> Retrieve OAuth client configuration.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>{
+  "clientId": "some-client-id",
+  "scopes": "openid profile"
+}</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /login</h2>
+        <p><strong>Purpose:</strong> Initiate OAuth login redirect flow to Hugging Face.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>Redirects user to Hugging Face authorize page.</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /oauth/callback</h2>
+        <p><strong>Purpose:</strong> OAuth callback endpoint to exchange authorization code for an access token and retrieve user info.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>Redirects user back to root / with hf_user cookie.</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /api/user</h2>
+        <p><strong>Purpose:</strong> Retrieve authenticated Hugging Face user details from hf_user cookie.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>{
+  "name": "Jane Doe",
+  "preferred_username": "janedoe",
+  "picture": "https://..."
+}</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /api/logout</h2>
+        <p><strong>Purpose:</strong> Log out the user by clearing the hf_user cookie and redirecting to root /.</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>Redirects user to root /.</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method post">POST</span> /api/save-data</h2>
+        <p><strong>Purpose:</strong> Save JSON data to server's data directory with a unique timestamped filename under the user.</p>
+        <p><strong>Request Example:</strong></p>
+        <pre><code>{
+  "type": "branding",
+  "data": { "theme": "dark" },
+  "user": "janedoe"
+}</code></pre>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>{
+  "success": true,
+  "message": "Data saved as janedoe_branding_2026-07-14-19-12-35-123Z.json"
+}</code></pre>
+      </div>
+
+      <div class="endpoint">
+        <h2><span class="method get">GET</span> /api/list-data</h2>
+        <p><strong>Purpose:</strong> Retrieve list of saved JSON data files filtered optionally by type and user.</p>
+        <p><strong>Query Parameters:</strong> <code>type</code> (optional), <code>user</code> (optional)</p>
+        <p><strong>Response Example:</strong></p>
+        <pre><code>[
+  {
+    "user": "janedoe",
+    "type": "branding",
+    "timestamp": "2026-07-14T19-12-35-123Z",
+    "data": { "theme": "dark" }
+  }
+]</code></pre>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
