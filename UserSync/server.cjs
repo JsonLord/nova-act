@@ -218,6 +218,61 @@ app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
 
+app.get('/api-docs', (req, res) => {
+  res.json({
+    openapi: "3.0.0",
+    info: {
+      title: "SyncUsers & NovaAct API Documentation",
+      version: "1.0.0",
+      description: "Functional REST endpoints for multi-agent simulation and AI-assisted content crafting."
+    },
+    endpoints: [
+      {
+        path: "/api/craft",
+        method: "POST",
+        description: "Generate engaging social media variations using Helmholtz-Blablador LLMs.",
+        request: {
+          content: "string (raw input text)",
+          variation: "string (e.g. 'LinkedIn Post', 'X Post')"
+        },
+        response: {
+          result: "string (generated variations)"
+        }
+      },
+      {
+        path: "/api/config",
+        method: "GET",
+        description: "Retrieve Hugging Face Space OAuth Client ID and scopes configuration."
+      },
+      {
+        path: "/api/user",
+        method: "GET",
+        description: "Retrieve authenticated Hugging Face user information (from oauth session)."
+      },
+      {
+        path: "/api/logout",
+        method: "GET",
+        description: "Clear authenticated user cookies."
+      },
+      {
+        path: "/api/save-data",
+        method: "POST",
+        description: "Save custom configurations, focus groups, or test inputs to server local storage.",
+        request: {
+          type: "string",
+          data: "object",
+          user: "string"
+        }
+      },
+      {
+        path: "/api/list-data",
+        method: "GET",
+        description: "List previously saved data documents filtered by owner or type."
+      }
+    ]
+  });
+});
+
 app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
