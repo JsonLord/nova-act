@@ -1,0 +1,48 @@
+name: Sync UserSync app to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "UserSync/**"
+      - ".github/workflows/sync-hf-space.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-hf-space
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Upload UserSync app to Leon4gr45/nova-test
+    runs-on: ubuntu-latest
+    env:
+      HF_SPACE_ID: Leon4gr45/nova-test
+      HF_TOKEN: ${{ secrets.HF_API_KEY }}
+      APP_DIR: UserSync
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Hugging Face token secret
+        run: |
+          if [ -z "$HF_TOKEN" ]; then
+            echo "Missing required GitHub secret: HF_API_KEY" >&2
+            exit 1
+          fi
+
+      - name: Install Hugging Face Hub CLI
+        run: python -m pip install --upgrade huggingface_hub
+
+      - name: Upload app directory to Space
+        run: |
+          huggingface-cli upload "$HF_SPACE_ID" "$APP_DIR" . \
+            --repo-type=space \
+            --token "$HF_TOKEN" \
+            --commit-message "Sync UserSync app from GitHub Actions" \
+            --exclude "node_modules/**" \
+            --exclude "dist/**" \
+            --exclude "test-results/**" \
+            --exclude "playwright-report/**" \
+            --exclude ".env*"
