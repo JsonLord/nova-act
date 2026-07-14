@@ -32,7 +32,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1uBpK_suSmvNgTEgSyU7qMe
 
 ### Hugging Face/FastAPI runtime
 
-The Docker image builds the React app and serves it from FastAPI on port `7860`, matching the Space URL `https://leon4gr45-usersync.hf.space`. Same-origin `/api/v1/*` requests are proxied by FastAPI so those endpoints can be exposed from the Space URL later.
+The Docker image builds the React app and serves it from FastAPI on port `7860`, matching the Space URL `https://leon4gr45-usersync.hf.space`. Same-origin `/api/v1/*` requests are proxied by FastAPI so those endpoints can be exposed from the Space URL later. The app also includes an `API Tabs 1-10` page that hosts the additional workflow tabs from the same Space origin.
 
 1. Build frontend assets:
    `npm run build`

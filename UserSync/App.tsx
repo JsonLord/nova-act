@@ -15,9 +15,10 @@ import Footer from './components/Footer';
 import SimulationPage from './components/SimulationPage';
 import ChatPage from './components/ChatPage';
 import ProductGuide from './components/ProductGuide';
+import ApiTabsPage from './components/ApiTabsPage';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'landing' | 'simulation' | 'chat' | 'guide'>('simulation');
+  const [currentView, setCurrentView] = useState<'landing' | 'simulation' | 'chat' | 'guide' | 'apiTabs'>('simulation');
   const [user, setUser] = useState<any>(null);
   const [simulationResult, setSimulationResult] = useState<any>(null);
 
@@ -68,9 +69,17 @@ function App() {
     setCurrentView('guide');
   };
 
+  const openApiTabs = () => {
+    setCurrentView('apiTabs');
+  };
+
   const goBackToSimulation = () => {
     setCurrentView('simulation');
   };
+
+  if (currentView === 'apiTabs') {
+    return <ApiTabsPage onBack={goBackToSimulation} />;
+  }
 
   if (currentView === 'guide') {
     return (
@@ -92,6 +101,7 @@ function App() {
         onBack={goBackToLanding} 
         onOpenChat={openChat}
         onOpenGuide={openGuide}
+        onOpenApiTabs={openApiTabs}
         user={user}
         onLogin={loginWithHF}
         onLogout={handleLogout}
