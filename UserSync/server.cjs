@@ -20,6 +20,59 @@ const REDIRECT_URI = SPACE_HOST
   ? `https://${SPACE_HOST}/oauth/callback`
   : `http://localhost:${port}/oauth/callback`;
 
+// API Docs functional documentation endpoint
+app.get('/api-docs', (req, res) => {
+  res.json({
+    appName: "Nova-Act Branding Content Testing & Space Suite",
+    version: "2.1",
+    endpoints: [
+      {
+        path: "/health",
+        method: "GET",
+        description: "Returns HTTP 200 OK status to indicate health status."
+      },
+      {
+        path: "/api-docs",
+        method: "GET",
+        description: "Returns this Swagger/REST interactive API documentation payload."
+      },
+      {
+        path: "/api/craft",
+        method: "POST",
+        description: "Craft copywriting variations from raw text using Blablador AI.",
+        parameters: {
+          content: "string (source copywriting blueprint content)",
+          variation: "string (e.g. social media post, newsletter)"
+        }
+      },
+      {
+        path: "/api/user",
+        method: "GET",
+        description: "Retrieve active logged-in HF user credentials from secure cookie session."
+      },
+      {
+        path: "/api/save-data",
+        method: "POST",
+        description: "Persistently save simulation runs, personas, and configurations.",
+        parameters: {
+          type: "string (type of saved asset)",
+          data: "object (custom structural payload to persist)",
+          user: "string (username/identifier)"
+        }
+      },
+      {
+        path: "/api/list-data",
+        method: "GET",
+        description: "Query and retrieve saved records filtering by type or user.",
+        parameters: {
+          type: "string (optional filter)",
+          user: "string (optional filter)"
+        }
+      }
+    ]
+  });
+});
+
 app.post('/api/craft', async (req, res) => {
   const { content, variation } = req.body;
   const apiKey = process.env.BLABLADOR_API_KEY;

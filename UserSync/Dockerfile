@@ -1,8 +1,8 @@
 FROM node:20-slim AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
 COPY . .
+RUN npm install
+RUN chmod -R +x node_modules/
 RUN npm run build
 
 FROM node:20-slim

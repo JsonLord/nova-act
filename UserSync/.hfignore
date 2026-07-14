@@ -1,5 +1,6 @@
 node_modules/
 .git/
+.github/
 test-results/
-.env
-.env.local
+server.log
+playwright-report/
