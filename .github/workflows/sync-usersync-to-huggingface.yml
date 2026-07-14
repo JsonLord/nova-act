@@ -1,0 +1,57 @@
+name: Sync UserSync to Hugging Face Space
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "UserSync/**"
+      - ".github/workflows/sync-usersync-to-huggingface.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-usersync-huggingface
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Upload UserSync app
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Hugging Face Hub client
+        run: python -m pip install --upgrade huggingface_hub
+
+      - name: Upload UserSync directory to Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import HfApi
+
+          token = os.environ.get("HF_TOKEN")
+          if not token:
+              raise SystemExit("HF_API_KEY repository secret is required")
+
+          HfApi(token=token).upload_folder(
+              folder_path="UserSync",
+              repo_id="Leon4gr45/UserSync",
+              repo_type="space",
+              path_in_repo=".",
+              ignore_patterns=[
+                  "node_modules/**",
+                  "dist/**",
+                  "test-results/**",
+                  ".env",
+                  ".env.*",
+              ],
+          )
+          PY

@@ -101,10 +101,6 @@ function App() {
     );
   }
 
-  if (currentView === 'conversation') {
-    return <ConversationPage onBack={goBackToSimulation} />;
-  }
-
   if (currentView === 'chat') {
     return (
       <ChatPage
