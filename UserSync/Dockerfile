@@ -1,24 +1,23 @@
 FROM node:20-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:20-slim
+FROM python:3.12-slim
 WORKDIR /app
 
-# Use the existing node user
-USER node
-ENV HOME=/home/node \
-    PATH=/home/node/.local/bin:$PATH
+ENV PYTHONUNBUFFERED=1 \
+    DATA_DIR=/data/usersync \
+    PORT=7860
 
-WORKDIR $HOME/app
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --from=build --chown=node:node /app/dist ./dist
-COPY --from=build --chown=node:node /app/package*.json ./
-RUN npm install --only=production
-COPY --chown=node:node server.cjs ./
+COPY --from=build /app/dist ./dist
+COPY backend ./backend
+COPY README.md ./README.md
 
 EXPOSE 7860
-CMD ["node", "server.cjs"]
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
