@@ -1,18 +1,12 @@
-// Re-written to use the new REST API at https://auxteam-usersyncui.hf.space
-const API_BASE_URL = "https://auxteam-usersyncui.hf.space";
+// Use same-origin FastAPI endpoints on the Hugging Face Space; the backend proxies upstream API calls.
+const API_BASE_URL = "";
 
 export class GradioService {
-  // Use HF Token from environment if available
   private static getHeaders() {
-    const token = (import.meta as any).env?.VITE_HF_TOKEN || null;
-    const headers: Record<string, string> = {
+    return {
       "Content-Type": "application/json",
       "Accept": "application/json"
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    return headers;
   }
 
   static async identifyPersonas(context: string) {
@@ -43,11 +37,7 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // Returns a SimulationResponse object: { job_id, status, message, ... }
-      return data.job_id; // old code expected job/simulation id as string return?
-      // Actually old code expects the data. Let's return the job_id as string because in ChatPage it does:
-      // const result = await GradioService.startSimulationAsync(simulationId, msg);
-      // Wait, let's look at ChatPage lines 185-195
+      return data.job_id;
     } catch (error) {
       console.error("Error starting simulation:", error);
       throw error;
@@ -65,7 +55,6 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // Returns { job_id, status, message, progress_percentage, results }
       return data;
     } catch (error) {
       console.error("Error getting simulation status:", error);
@@ -91,10 +80,6 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // The old code returned an array of strings.
-      // API returns: { focus_groups: [ {id, name, agent_count} ] }
-      // We will map this to an array of names or IDs.
-      // We need to see how `listSimulations` is used.
       return data.focus_groups || [];
     } catch (error) {
       console.error("Error listing simulations/personas:", error);
@@ -121,7 +106,6 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // returns SimulationResponse { job_id, status }
       return data;
     } catch (error) {
       console.error("Error generating personas:", error);
