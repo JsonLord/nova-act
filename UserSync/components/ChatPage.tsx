@@ -307,7 +307,7 @@ const ChatPage: React.FC<ChatPageProps> = ({ onBack, simulationResult, setSimula
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#050505] text-white flex flex-col animate-in fade-in duration-300 overflow-hidden">
+    <div className="flex h-[calc(100vh-56px)] w-full flex-col bg-[#050505] text-white animate-in fade-in duration-300 overflow-hidden relative">
       
       {/* Header / Nav */}
       <div className="flex items-center justify-between px-6 py-4 md:px-8 md:py-6 border-b border-gray-800/50 bg-[#050505] z-10 relative">

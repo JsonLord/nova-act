@@ -5,7 +5,10 @@ test('Verify app features', async ({ page }) => {
   await page.goto('http://localhost:7860');
 
   // Wait for the app to load
-  await page.waitForSelector('text=Branding Content Testing');
+  await page.waitForSelector('text=SyncUsers & NovaAct');
+
+  // Click Dashboard to get to Tab 2 Simulation view
+  await page.click('text=Dashboard');
 
   // 1. Verify Default View is Job Title
   const currentView = await page.locator('select').nth(1).inputValue();

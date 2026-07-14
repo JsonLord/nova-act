@@ -147,7 +147,7 @@ const SimulationPage: React.FC<SimulationPageProps> = ({
   const currentFilters = VIEW_FILTERS[viewMode] || VIEW_FILTERS['Country'];
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-black text-white font-sans relative">
+    <div className="flex h-[calc(100vh-56px)] w-full overflow-hidden bg-black text-white font-sans relative">
       {/* Sidebar */}
       <aside className={`fixed md:relative w-[300px] h-full flex-shrink-0 border-r border-gray-800 flex flex-col bg-[#0a0a0a] z-40 transition-all duration-300 ${isLeftPanelOpen ? 'translate-x-0' : '-translate-x-full md:-ml-[300px]'}`}>
         {/* Header */}
