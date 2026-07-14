@@ -3,7 +3,7 @@ name: Sync UserSync to Hugging Face Space
 on:
   push:
     branches:
-      - main
+      - codex/build-app-and-prepare-for-hugging-face-deployment
     paths:
       - "UserSync/**"
       - ".github/workflows/sync-usersync-to-huggingface.yml"
