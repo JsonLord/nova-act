@@ -48,6 +48,7 @@ steering
     observing / thinking / acting blocks and per-value provenance.
 """
 
+from oasis.generator.enrichment import EnrichmentReport, enrich_personas
 from oasis.generator.generation import GenerationSpec, PersonaHub, generate_personas
 from oasis.generator.schema import (
     CompanyContext,
@@ -63,6 +64,7 @@ from oasis.generator.user_info import UserInfo
 __all__ = [
     "CompanyContext",
     "EmotionalProfile",
+    "EnrichmentReport",
     "GenerationSpec",
     "MentalProfile",
     "NovaSteeringConfig",
@@ -72,5 +74,6 @@ __all__ = [
     "UserInfo",
     "UserSyncPersona",
     "derive_steering",
+    "enrich_personas",
     "generate_personas",
 ]

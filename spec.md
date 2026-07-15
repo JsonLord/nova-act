@@ -391,6 +391,33 @@ What `oasis/generator/` implements (see its README for module detail):
 - **Demo**: `python -m oasis.generator 12 42 --out ./hub_demo` writes the OASIS profile file, the
   UI graph payload, and one steering config per persona.
 
+### 5.1 Scaling budget: 2,000 personas in well under 30 minutes
+
+Measured and designed-for numbers (benchmarks run in this repo):
+
+| Phase | Mechanism | 2,000 personas | LLM calls |
+| --- | --- | --- | --- |
+| Deterministic skeleton | `generate_personas()` — profiles, opinions (deterministic text), ties, steering configs, graph payload | **~0.5 s** (10,000 in ~6 s) | **0** |
+| LLM enrichment | `enrich_personas()` (`enrichment.py`): batched (default 10 personas/call), thread-pooled (default 16 concurrent), graceful per-batch fallback | **~5–10 min** at ~30 s/batch-call | **200** (`ceil(count / batch_size)`) |
+| Naive per-item hook (`spec.llm`, serial) | kept for small groups (< ~50) | hours — do not use at scale | 4 × count = 8,000 |
+
+Throughput sanity check: ~200–250 output tokens/persona ≈ 450k tokens total; at ~60 tok/s per
+stream, even 8 concurrent streams finish in ~15 min — the binding constraint is provider rate
+limits (200 batched calls ≈ 7 RPM: trivial), not compute. Cost at small-model pricing: low
+single-digit dollars per 2,000-persona group.
+
+**Progressive enrichment UX** (ties into §11): the skeleton renders in the persona graph
+immediately; enriched paragraphs and opinion statements stream in per batch, nodes pulsing as
+they update. A failed batch keeps deterministic text and is retried selectively
+(`EnrichmentReport.failed_batches`).
+
+**Simulation-side budget** (running the group in Social Mirror, distinct from generating it):
+OASIS costs ~1 LLM call per *activated* agent per timestep. In a 30-minute window at concurrency
+64 and ~5 s/call ≈ 23,000 calls — i.e. ~11 full timesteps with all 2,000 agents active, or 40+
+timesteps activating a 25% subset per step (`EnvAction(activate_agents=…)`). Upstream ships a
+1-million-agent instantiation path (`generate_agents_100w` with `active_threshold`), so agent
+*count* is not the ceiling — per-step LLM calls are.
+
 Still to shape (open): trait synthesis from real CRM/`last30days`/monitoring records (the
 CRM-field → generator-field mapping table), approval/locking of persona updates, business-case
 template library, and persona-scale controls. Backend: **Persona Hub API** (`/api/personas`,
