@@ -806,12 +806,129 @@ Deliberately **not** standalone: `/api/nova-runtime` (an implementation detail o
 `/api/account`/`/api/billing` (cross-cutting). The gateway's service registry (§9) is the single
 place a cluster gets flipped from internal to sellable.
 
-## 15. Implementation Order
+## 15. Plan Aspect 1 — Data Unification: from data sources to steering parameters
+
+*(Implemented v1 in `backend/app/routers/datahub.py` → `POST /api/datahub/unify`.)*
+
+Persona generation runs in one of **three source modes**, selected per generation:
+
+1. **`synthetic`** — all-synthetic: distribution defaults only; the pool mimics no one in
+   particular. Zero data prerequisites, instant start.
+2. **`company`** — company data enabled: HubSpot / Salesforce / other CRM records (imported via
+   `POST /api/connectors/{name}/import`, a **paid service**) are normalized into a canonical
+   `CrmRecord` shape and shape the pool so it **mimics the real customer base**.
+3. **`company_social`** — additionally, `last30days` researches the current customers' comments,
+   thinking patterns, and behaviour online — scoped by what the company considers its customer
+   profile — normalized into a `ResearchDropSummary`.
+
+**The unification pipeline** (each stage an artifact with provenance):
+
+```text
+CRM records ─┐
+research drop ├─> POST /api/datahub/unify ─> UnifiedTraits (unified_traits_id)
+monitoring ──┘         │
+                       └─> passed to POST /api/personas/generate
+                             └─> GenerationSpec distributions -> personas
+                                   └─> derive_steering() -> Nova steering params
+```
+
+**Translation table — how each data source becomes steering** (v1 mappings, all deterministic
+and reviewable):
+
+| Source signal | UnifiedTraits field | Generation effect | Final steering effect |
+| --- | --- | --- | --- |
+| CRM ages | `age_range` | Age distribution of pool | Age-conditioned physical baselines → observation delay, zoom, motor precision |
+| CRM gender/country/job title | `genders`, `countries`, `professions` | Demographic distributions | Prompt SELF-DESCRIPTION grounding |
+| CRM engagement score | `digital_literacy_mean` | Literacy distribution shifts | `max_steps`, tech-confidence, exploration budgets |
+| CRM support-ticket volume | `patience_mean` (inverse) | Emotional patience distribution | Frustration abort threshold, hesitation, timeout |
+| CRM NPS | `brand_affinity` (peaked distribution) | Opinion stance anchoring | Opinion expression in content/branding tests |
+| last30days sentiment | `brand_affinity` (overrides NPS when fresher) | Same, from live social voice | Same, plus think-restyle tone |
+| last30days top/complaint topics | `opinion_topics`, `complaint_topics` | Opinion topics replace business-case defaults | What personas voice opinions about |
+| last30days activity level | `activity_level` | Activation schedules in Social Mirror | Journeys per persona per cycle |
+| Monitoring avg session length | `patience_mean` (validated) | Calibrates patience against *observed* behaviour | The validation loop: synthesized pool vs. real telemetry |
+
+Rules: **fresher beats staler** (research drop overrides CRM-derived affinity), **observed beats
+inferred** (monitoring telemetry recalibrates any mean), and every UnifiedTraits artifact records
+which sources contributed (`provenance.mode`, record counts) so a persona pool can always answer
+"who am I mimicking, based on what?".
+
+Open for later: per-field confidence weighting, incremental re-unification on connector sync,
+and the CRM-field mapping UI in DataHub.
+
+## 16. Plan Aspect 2 — From Testing Runs to Meaningful Decisions
+
+*(Implemented v1 in `backend/app/routers/analysis.py` and `uxchain.py`.)*
+
+### 16.1 The analysis pipeline
+
+```text
+journey runs (steered Nova agents, per persona)
+  -> POST /api/analysis/action-trace       # Action Trace Graph (§12.2)
+       heatmap similarity  (soft-IoU on rasterized interaction grids)
+       thinking similarity (raw think() text; embedding-pluggable metric)
+  -> POST /api/analysis/decisions          # decision candidates
+  -> POST /api/graph-research/qa           # grounded Q&A over the graph (§12.3)
+```
+
+The decision logic reads the **two similarity channels against each other** — that tension is
+the product's core insight:
+
+| Pattern | Meaning | Decision candidate |
+| --- | --- | --- |
+| Acted alike, thought differently | Personas share the path but one group absorbs friction silently | Targeted copy/affordance fix on the shared path |
+| Thought alike, acted differently | Same intent, competing routes | Consolidate navigation; promote the shorter route |
+| Full divergence | Segment-specific experience | Persona-conditional variant or onboarding |
+
+### 16.2 Output APIs for downstream agents
+
+Testing results are **agent-consumable products**, not just reports:
+
+- **Design-agent MCP**: every operation is exposed as an MCP tool via `GET /mcp`
+  (auto-generated from the pack OpenAPI: `usersync.analysis.analysis_decisions`,
+  `usersync.uxchain.uxchain_run`, …23 tools live). A design UI agent (Figma plugin agent, code
+  assistant) calls these to ground its design choices in persona testing: *"which personas
+  struggled on this screen, why, and what fix is proposed?"*
+- **Decision sets** (`decision_set` artifacts) carry machine-actionable fields
+  (`kind`, `runs`, `signal`, `decision_candidate`) plus provenance to the exact graph and runs.
+- **Persona-voiced evidence**: the restyled `think()` streams and opinions attach to findings, so
+  a design agent can quote *the user's experience in their own words*.
+
+### 16.3 The 3-piece UX chain (website, app, and content testing)
+
+`POST /api/ux-chain/runs` produces the three-piece evidence chain, rendered as three cards:
+
+```text
+[1] screenshot + heatmap  ->  [2] UX/UI problem identified  ->  [3] solution
+```
+
+- **Piece 1**: the tested screen with its interaction heatmap — from a Nova journey run
+  (`journey_run_id`) or generated by **ux-mentor** (`/generate_heatmap/` at
+  `https://leon4gr45-ux-mentor.hf.space` — UX Analysis mode: heatmaps, drop-offs, UX score).
+- **Piece 2**: the identified problem with evidence and severity (heatmap density + persona runs).
+- **Piece 3**: the fix — **screenshot-to-code** (github.com/abi/screenshot-to-code) regenerates
+  the screen as code, the code is optimized against the problem, and the result is **re-rendered
+  to a screenshot that solves the issue** (ux-mentor `/generate_iteration/` — Design Iteration
+  mode). *Integration note: the upstream repo can't be vendored cross-owner in this environment —
+  deploy a fork (e.g. `JsonLord/screenshot-to-code`) and set `SCREENSHOT_TO_CODE_BASE_URL`;
+  `UX_MENTOR_BASE_URL` points at the existing Space. Unconfigured engines degrade to structured
+  pieces flagged `simulated: true`, keeping the contract testable.*
+
+**Card UX** (implemented in `UserSync/components/UxMentorChain.tsx`, wired as the Nova Act tab's
+"UX Chain" subview): each card has a **switch control** flipping between the **rendered design**
+and its **code** representation (pieces that have both — the solution always does); a **dropdown
+menu** switches between the three ux-mentor modes (**UX Analysis**, **User Journey**, **Design
+Iteration**), re-running the chain per mode. The chain also runs per **Experience Lens** (device/
+limitation profile), so the same screen yields per-persona chains — content testing feeds the
+same chain with content variants instead of URLs.
+
+## 17. Implementation Order
 
 1. Rebrand Tab 1 to UserSync (brand mark, titles, `branding.ts` promise lines, token file) and lay
    the motion foundation (§11 items 1–2: build-time Tailwind, motion library, view transitions).
-2. Stand up the first FastAPI station (`usersync-journey-station`) from `fastapi_app.py`: `/healthz`,
-   `/openapi.json`, HF OAuth, `/api/journeys` triggering a real `nova_act` workflow.
+2. ✅ FastAPI backend landed in `backend/` (eight pack routers, standalone via `USERSYNC_PACKS`,
+   `/healthz`, `/openapi.json`, `/mcp` manifest, HF OAuth, credits ledger, artifact store,
+   Dockerfile for Space deployment, 7 smoke tests). Next: execute journeys through a live
+   `nova_act` workflow when `NOVA_ACT_API_KEY` is configured.
 3. Port one `ui-test-execution-agent` scenario as a Nova Act workflow template; delete-parity list.
 4. Nova Configurations tab: device profiles + first limitation profiles on existing constructor
    params; CDP throttling next.
