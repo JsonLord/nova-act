@@ -96,6 +96,22 @@ a Nova Act workflow through FastAPI** instead of mock endpoints.
   folder is deleted once parity is demonstrated by workflow templates covering: journey replay,
   regression assertion (`act_get()` with schema), and evidence capture.
 
+**Native Nova Act Console — UI parity with `nova.amazon.com/chat`.** The Nova Act views inside
+this tab must **resemble exactly the current UI they are embedded in** at
+`https://nova.amazon.com/chat`, so users who know Nova get zero-friction familiarity:
+
+- Component inventory to mirror: session list/sidebar, central conversation thread with per-`act()`
+  step cards, the prompt composer, and the live agent/browser preview panel — same placement, same
+  interaction grammar, matching spacing/typography/dark-surface treatment. UserSync branding (§2)
+  applies only to the surrounding shell (navbar, tab chrome), never inside the console surface.
+- The live page is a JS-rendered app, so parity cannot be specced from static fetches. Fidelity is
+  captured **with our own tooling**: a recurring UI-verification workflow screenshots
+  `nova.amazon.com/chat` (authenticated session), extracts the component layout, and diffs our
+  console views against it — the parity report is a standing artifact, and drift in the upstream
+  UI opens a design task. Dogfooding: the product tests its own resemblance.
+- Console views are thin: they render the same run traces, `think()` streams, and step cards the
+  Journey runner produces — parity is a skin over shared components, not a fork.
+
 ### Tab 2 — Behavior Steering Lab *(UI committed; mechanism — Depth-2 spec, §4)*
 
 How agent behavior can be steered. The steering **parameters get a real UI** (grouped forms per
@@ -621,7 +637,149 @@ Target motion spec:
 7. **Reduced motion**: every animation respects `prefers-reduced-motion` — non-negotiable for a
    product whose pitch is accessibility-aware usability testing.
 
-## 12. Implementation Order
+## 12. Graph View System — the Mindwalk adaptation family
+
+From `cosmtrek/mindwalk` we take **only the graph visualization** (the in-app adapter approach the
+prototype already uses — no vendored code, an inspired reimplementation). It becomes **one base
+graph component with per-use-case adaptations**: every graph surface in the app is a configured
+variant of the same view, so interaction grammar (select node → inspect → provenance → promote),
+theming, and the Q&A panel are learned once.
+
+### 12.1 The variant registry
+
+| Variant | Tab | Nodes | Edges | Proximity semantics | Adaptation specifics |
+| --- | --- | --- | --- | --- | --- |
+| **Action Trace Graph** | Journeys / Steering analysis | Agent actions per step (action type, target, screenshot, heatmap footprint, raw + restyled `think()`) | Sequential run path; cross-run similarity links | **Similarity layout** (see 12.2) | Run-vs-run and persona-vs-persona overlay; channel blend slider (heatmap vs thinking) |
+| Persona Graph | Persona Generation | Personas (full profile + steering summary) | Generated social ties | Community/affinity clustering | Node inspector with §5 profile blocks and steering chips |
+| DataHub Provenance & Time Captures | DataHub | Artifacts, pipeline runs, connector sources, personas | Provenance references | Pipeline lineage distance | Time-capture scrubbing (§ Tab 5); diff highlighting between captures |
+| Social Mirror Animation | Social Mirror | Personas as platform users, posts/comments | Follows, interactions | Network topology (force) | Time-stepped playback (§ Tab 6); real-vs-synthetic side-by-side |
+| Navigation Memory | cross-tab (dev/debug) | Tabs, subviews, personas, limitations | navigates-to / constrains / calls-api | UI adjacency | The existing prototype adapter (`MindwalkGraphView`), kept as the base-component reference |
+| **Endpoint Connection Map** | Dev & Account | Pack API endpoints | Artifact flows (§13) | Pack grouping | Rendered live from gateway registry + OpenAPI; edge tooltips show artifact schemas and live call counts |
+
+### 12.2 Action Trace Graph — proximity analysis (use case 1)
+
+The primary analysis view for UI testing: show the actions an agent took and **how they connect**,
+with **proximity encoding similarity** so divergence is visible at a glance and analyzable later.
+
+Two similarity channels, each a deterministic metric stored with the analysis artifact:
+
+- **Heatmap similarity**: each action/run carries an interaction-heatmap footprint (click/scroll
+  coordinates, dwell areas on the page grid); similarity = spatial overlap of the rasterized
+  heatmaps (e.g. IoU or earth-mover distance on the grid). *"How similar were they on heatmaps?"*
+- **Thinking similarity**: embedding distance (cosine) between `think()` texts of the compared
+  steps/runs — computed on the **raw** reasoning, with the persona-restyled variant inspectable
+  alongside. *"How similar or different was what they were thinking?"*
+
+The layout blends the channels (user-controlled slider); nodes that acted alike but thought
+differently (or vice versa) visibly separate — that tension is exactly the usability signal the
+Steering & Analysis pack promotes (§4). All pairwise scores persist as
+`action_trace_analysis_id` artifacts for later analysis.
+
+### 12.3 AI Graph Answers — LLM Q&A per graph, regenerated on update
+
+Every graph variant carries a Q&A panel: **questions and answers are both LLM-generated** from
+the graph context (serialized nodes/edges/metrics + the variant's semantics), and **dynamically
+regenerated when the graph updates**.
+
+```text
+POST /api/graph-research/qa
+{ "graph_id", "graph_version", "variant", "focus_node_ids"?, "previous_qa"? }
+-> { "qa": [ { "question", "answer", "grounded_node_ids", "stale": false } ],
+     "regenerated": ["qa-3"], "kept": ["qa-1","qa-2"] }
+```
+
+- Regeneration is **debounced and diff-aware**: on a graph update, answers grounded in changed
+  nodes are marked stale and regenerated; untouched Q&A stays stable so the panel doesn't churn.
+- Answers must cite `grounded_node_ids`; clicking an answer highlights its evidence in the graph
+  (the §2 evidence/provenance grammar).
+- Users can pin questions (always re-answered on update) and ask free-form ones (added to the set).
+
+## 13. API Endpoint Connection Map
+
+All tabs are connected to each other — through **artifact references flowing between pack APIs**,
+never through shared frontend state. This is the connection graph (also rendered live as the
+Endpoint Connection Map variant in the Dev tab):
+
+```mermaid
+graph LR
+  subgraph data["usersync-data-station"]
+    CONN["/api/connectors\n(HubSpot, Salesforce, Figma)"]
+    DH["/api/datahub"]
+    RD["/api/research-drops\n(last30days, paid)"]
+    GS["/api/graph-store\n(Neo4j/Neptune placeholder)"]
+  end
+  subgraph persona["usersync-persona-station"]
+    PG["/api/personas\n(oasis/generator)"]
+  end
+  subgraph steering["usersync-steering-station"]
+    SA["/api/steering\n+ /autofill"]
+    AN["/api/analysis"]
+  end
+  subgraph journey["usersync-journey-station"]
+    JR["/api/journeys"]
+    NR["/api/nova-runtime\n/configurations"]
+  end
+  subgraph visual["usersync-visual-station"]
+    VZ["/api/visualizations"]
+    QA["/api/graph-research/qa"]
+  end
+  subgraph social["usersync-social-station"]
+    SM["/api/social-mirror"]
+  end
+  subgraph design["usersync-design-station"]
+    FG["/api/figma\n/api/design-review"]
+  end
+  subgraph dev["usersync-dev-station"]
+    AC["/api/account /api/billing\n(quota on every call)"]
+  end
+
+  CONN -- "datahub_snapshot_id" --> DH
+  RD -- "research_drop_id" --> DH
+  DH -- "customer traits" --> PG
+  DH -- "demographics (opt-in auto-update)" --> NR
+  PG -- "persona_id, graph_id" --> SA
+  PG -- "graph_id" --> SM
+  PG -- "graph_id" --> VZ
+  SA -- "steering_config_id" --> JR
+  NR -- "limitation_profile_id" --> JR
+  FG -- "figma_frame_id" --> JR
+  JR -- "journey_run_id (trace, think stream, heatmaps)" --> AN
+  AN -- "action_trace_graph_id" --> VZ
+  AN -- "promoted signals" --> SA
+  SM -- "sim timelines, engagement" --> VZ
+  DH -- "real social graph" --> SM
+  VZ -- "graph_id + version" --> QA
+  DH -- "graph snapshots" --> GS
+  AC -.-> JR & PG & SA & DH & SM & VZ & FG
+```
+
+Reading the map: DataHub feeds persona generation; personas feed steering (auto-fill) and the
+social simulation; steering + limitation profiles + design frames feed journey runs; runs feed
+analysis; analysis feeds graphs and promotes signals back into steering — a closed loop, with
+account/billing metering every edge.
+
+## 14. Standalone API Products — where the endpoints differentiate
+
+Each cluster below can ship as its **own station/Space with its own buyer** (§9), valuable without
+the rest of the app. Qualification rule: one artifact in, one artifact out, meterable
+`quota_category`, useful in isolation.
+
+| Standalone product | API base | In → Out | Buyer & standalone value |
+| --- | --- | --- | --- |
+| **Persona Synthesis API** | `/api/personas` | Product description (+ optional CRM/CSV) → synthetic user group with physical/mental/emotional profiles + opinions | Market research, CRO agencies, teams without user panels. Differentiator: personas are **machine-actionable** (steering-ready), not demographic slide-cards |
+| **Agent Steering API** | `/api/steering` | Persona/user JSON → validated agent steering config | Anyone building agents (Nova today, adaptable). Differentiator: per-value provenance + deterministic numeric core (§4.2) |
+| **Usability Journey API** | `/api/journeys` | URL + goal + persona → run trace, findings, persona-voiced feedback | QA teams and agencies. The core product. Differentiator: persona-steered runs vs. generic bot checks |
+| **Graph Answers API** | `/api/graph-research/qa` | Any graph JSON + version → grounded Q&A, diff-aware refresh | BI/observability vendors embedding graph explanation. Differentiator: stable Q&A sets that only regenerate what changed |
+| **Design Parity API** | `/api/design-review` | Figma frame + live URL → drift/parity report | Design-system teams. Differentiator: vision-driven agent walks the live page, not DOM-only diffing |
+| **Content Pre-Test API** | `/api/social-mirror` | Content + persona group → simulated engagement + opinion breakdown | Marketing teams pre-testing copy/campaigns. Differentiator: opinions traceable to persona features and data provenance |
+| **Research Drops API** | `/api/research-drops` | Topic/brand → normalized, cleansed recent social data | Social-listening consumers; a paid data feed (last30days) |
+
+Deliberately **not** standalone: `/api/nova-runtime` (an implementation detail of journeys),
+`/api/datahub` connectors (paid add-on bound to an account, not a product), and
+`/api/account`/`/api/billing` (cross-cutting). The gateway's service registry (§9) is the single
+place a cluster gets flipped from internal to sellable.
+
+## 15. Implementation Order
 
 1. Rebrand Tab 1 to UserSync (brand mark, titles, `branding.ts` promise lines, token file) and lay
    the motion foundation (§11 items 1–2: build-time Tailwind, motion library, view transitions).
@@ -631,7 +789,12 @@ Target motion spec:
 4. Nova Configurations tab: device profiles + first limitation profiles on existing constructor
    params; CDP throttling next.
 5. Expose the `think()` stream per step in the run trace UI (Depth-2 pillar 1, extraction only)
-   with the live-run motion treatment (§11 item 5).
+   with the live-run motion treatment (§11 item 5), rendered in the Nova-chat-parity console
+   shell (§ Tab 1); stand up the recurring parity-screenshot workflow against
+   `nova.amazon.com/chat`.
+5b. Build the base graph component (§12) by generalizing the existing `MindwalkGraphView`; ship
+   the Action Trace Graph variant (heatmap + thinking similarity channels) and the
+   `POST /api/graph-research/qa` endpoint with diff-aware regeneration.
 6. Persona Generation tab v1: in-depth parameter form + persona graph UI over the landed
    `oasis/generator/` package (✅ generation, steering derivation, and graph payload exist —
    `python -m oasis.generator`); wrap it in the Persona Hub API.
