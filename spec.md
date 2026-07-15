@@ -182,12 +182,19 @@ The data workstation. Visualizations are first-class here.
 - Demographic data from here later auto-updates the Nova limitation configurations (Tab 3) when the
   user opts in.
 
-### Tab 6 — Social Mirror (OASIS living network)
+### Tab 6 — Social Mirror (OASIS living network, animated)
 
 A living social network built from OASIS: the personas simulate **Reddit- and X-style** platforms,
 growing a synthetic network whose analysis is **compared to the real social-analysis graph** built
 from real data (which we also grow as a visual data graph; Neptune/Neo4j placeholder shared with
 Tab 5).
+
+- **Social network animation** is the tab's centerpiece: the generated personas' network plays as
+  a time-stepped animation — nodes joining, ties forming (the generator's preferential-attachment
+  edges), posts/comments/likes rippling through communities — with scrub/play controls over
+  simulation timesteps. The animation renders the `to_graph_payload()` artifact produced by
+  `oasis/generator/` (§5), so the persona graph in Tab 4, its DataHub time captures, and this
+  animation are three views of the same `graph_id`.
 
 - OASIS **network actions are conserved**: the OASIS action space (post, comment, like, repost,
   follow, search, …) remains the simulation vocabulary.
@@ -325,31 +332,53 @@ produced it.
 
 ---
 
-## 5. Depth-3 Spec (placeholder): Persona Generation via OASIS `generator/`
+## 5. Depth-3 Spec: Persona Generation via OASIS `generator/` — **first implementation landed**
 
-> Status: **placeholder** — the OASIS `generator/` module is the main entry point for us to shape
-> later.
+> Status: **v1 implemented** in `oasis/generator/` (this repo). The OASIS generation pipeline was
+> pulled (adapted from `camel-oasis` 0.2.5: `agents_generator.py` + `config/user.py`, Apache-2.0
+> with modification notes) and adjusted to the steering goal. The deeper generation mechanics
+> (LLM-driven trait synthesis from real DataHub records) remain open.
 
-Findings from investigation:
+**The goal this generator serves**: create a **synthetic user group for the company** — based on
+its product, its data, and the whole DataHub — to simulate user behaviour in online usability
+tests, U-tests, content testing, and branding testing. Personas **express opinions**, and their
+**physical, mental, and emotional features steer the Nova agent** representing them in its
+**observing, thinking, and acting**.
 
-- The vendored `oasis/` in this repo contains **only docs, data samples, and assets** — the
-  `generator/` folder exists upstream (`camel-ai/oasis`) but is **not vendored here yet**. First
-  implementation step is vendoring or depending on upstream and wrapping `generator/` behind our
-  Persona Hub API.
-- The generator's **output contracts are already documented** in
-  `oasis/docs/user_generation/generation.mdx` and sample data exists in `oasis/data/`:
-  - **Twitter format (CSV)**: `name`, `username`, `user_char`, `description` (persona text becomes
-    the agent's system prompt; `agent_id` = row order).
-  - **Reddit format (JSON)**: `realname`, `username`, `bio`, `persona` (detailed personality text),
-    `age`, `gender`, `mbti`, `country` (see `oasis/data/reddit/user_data_36.json`).
-- These fields are exactly the demographic/psychographic slots our DataHub pipelines must fill:
-  CRM records + `last30days` research drops + monitoring telemetry → normalized customer traits →
-  generator inputs → persona profiles → (a) OASIS simulation agents, (b) steering/limitation
-  bindings for Nova runs.
+What `oasis/generator/` implements (see its README for module detail):
 
-To shape later: business-case templates for generation, approval/locking of persona updates,
-persona scale controls, and the mapping table CRM-field → generator-field. Backend: **Persona Hub
-API** (`/api/personas`, `/api/lenses`).
+- **Schema** (`schema.py`): the OASIS Reddit persona contract (incl. `profession`,
+  `interested_topics`, validated key-compatible with `oasis/data/reddit/user_data_36.json`)
+  extended with `PhysicalProfile` (vision acuity, color vision, motor precision, reaction time,
+  fatigue, device), `MentalProfile` (digital literacy, attention span, working memory, exploration
+  and planning style), `EmotionalProfile` (mood, patience, trust, risk aversion, brand affinity,
+  expressiveness), `Opinion` (topic/stance/intensity/statement — the unit of content & branding
+  feedback), and `CompanyContext` (company, product, business case, DataHub snapshot / research
+  drop / monitoring refs).
+- **Generation** (`generation.py`): seeded, distribution-driven `generate_personas()` conditioned
+  on the company context; age conditions physical baselines; brand affinity anchors opinion
+  stances; scale-free (preferential-attachment) social ties; optional **LLM hook** for persona
+  text and opinion statements (the same hook the Steering Auto-Fill service uses). Outputs stay
+  **upstream-compatible**: `to_oasis_reddit_json()` feeds `generate_reddit_agent_graph`
+  unchanged; `to_graph_payload()` is the node/edge artifact the persona graph and the social
+  network animation render.
+- **Steering derivation** (`steering.py`): `derive_steering(persona)` produces a
+  `NovaSteeringConfig` with three explicit blocks matching the triad —
+  **physical → OBSERVING** (device viewport, zoom compensation, CDP color-vision deficiency,
+  `observation_delay_ms`, re-read count), **mental → THINKING** (composed SELF-DESCRIPTION prompt
+  block via the adapted OASIS `UserInfo` pattern, `think()`-restyle instruction, `max_steps`,
+  options-considered/scroll-depth from exploration style), **emotional → ACTING** (allowed-action
+  subset, hesitation waits, timeout, **frustration abort after N failed steps**, opinion
+  expression). Every derived value is a `SteeredValue` with `source_fields` + `rationale` —
+  the provenance-chip contract of §4.2. Numbers are deterministic math; the LLM is used only for
+  language.
+- **Demo**: `python -m oasis.generator 12 42 --out ./hub_demo` writes the OASIS profile file, the
+  UI graph payload, and one steering config per persona.
+
+Still to shape (open): trait synthesis from real CRM/`last30days`/monitoring records (the
+CRM-field → generator-field mapping table), approval/locking of persona updates, business-case
+template library, and persona-scale controls. Backend: **Persona Hub API** (`/api/personas`,
+`/api/lenses`) wraps this package.
 
 ---
 
@@ -546,7 +575,7 @@ Gateway service-registry entry (shape):
 | `UserSync/fastapi_app.py` | Inert reference, not deployed | Seed of the first FastAPI station |
 | `src/nova_act/` | Full Nova Act SDK incl. `workflow` module | **The engine.** Untouched core; extended via §4 steering surfaces |
 | `ui-test-execution-agent/` (Java) | Standalone, unintegrated | **Dissolved** → Nova Act native workflow templates (Tab 1) |
-| `oasis/` | Docs/data/assets only; **no `generator/` vendored** | Vendor/depend on upstream; wrap `generator/` behind Persona Hub API |
+| `oasis/` | Docs/data/assets + **`oasis/generator/` (new)**: adapted OASIS generation with physical/mental/emotional steering, opinions, and `derive_steering()` | Persona Hub API wraps `oasis/generator/`; upstream `camel-oasis` added when the simulation runtime lands |
 | `last30days-skill/` | Full standalone CLI/skill | Wrapped as paid research-drop service in DataHub |
 | `nova-act-agent-skills/` | Skill/packaging metadata | Source for MCP tool wrapping conventions |
 | HF login | Real OAuth in Express; cookie-only, no user records | Anchor identity for account layer; move to shared account resolution + tokens/credits |
@@ -603,12 +632,12 @@ Target motion spec:
    params; CDP throttling next.
 5. Expose the `think()` stream per step in the run trace UI (Depth-2 pillar 1, extraction only)
    with the live-run motion treatment (§11 item 5).
-6. Persona Generation tab v1: in-depth parameter form + persona graph UI seeded from OASIS sample
-   data (`oasis/data/reddit/user_data_36.json`); vendor OASIS `generator/` behind the Persona Hub
-   API.
-7. Steering Lab UI + Auto-Fill: capability-schema-validated `SteeringConfig`, deterministic
-   mapping functions for the §4.3 mathematical rows, LLM composition for the prompt rows,
-   provenance chips; `POST /api/steering/autofill`.
+6. Persona Generation tab v1: in-depth parameter form + persona graph UI over the landed
+   `oasis/generator/` package (✅ generation, steering derivation, and graph payload exist —
+   `python -m oasis.generator`); wrap it in the Persona Hub API.
+7. Steering Lab UI + Auto-Fill: surface `derive_steering()` output (✅ provenance-chip
+   `SteeredValue`s implemented) in the parameter forms; add the LLM hook for prompt rows;
+   `POST /api/steering/autofill`.
 8. DataHub skeleton: HF `/data` artifact conventions, shared persona `graph_id` with time
    captures, first connector stub (Figma or HubSpot).
 9. Social Mirror: OASIS Reddit/X simulation on generated personas; comparison views; prompt-fusion
