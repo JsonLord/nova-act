@@ -61,6 +61,72 @@ app.post('/api/craft', async (req, res) => {
   }
 });
 
+
+const tabEvents = [];
+
+const openApiDocument = {
+  openapi: '3.1.0',
+  info: { title: 'Nova Act Suite API', version: '1.0.0', description: 'FastAPI-compatible contract for shared HF auth, tab communication, Nova Act actions, and DataHub records.' },
+  paths: {
+    '/api/user': { get: { summary: 'Resolve the shared Hugging Face user for every tab.' } },
+    '/api/tabs/events': { get: { summary: 'List cross-tab events sorted newest first.' }, post: { summary: 'Publish a cross-tab event.' } },
+    '/api/nova-act/session': { post: { summary: 'Create a Nova Act browser automation session placeholder.' } },
+    '/api/datahub/records': { get: { summary: 'List persisted DataHub records.' } },
+    '/api/mindwalk/graph': { get: { summary: 'Describe the Mindwalk-inspired UI navigation graph contract.' } },
+    '/api/omniparser/parse': { post: { summary: 'Parse UI elements into LLM-grounded language for Nova Act.' } },
+    '/api/nova-act/limitations': { post: { summary: 'Inject persona-specific limitation functions into Nova Act prompt context.' } }
+  }
+};
+
+app.get('/api/openapi.json', (req, res) => res.json(openApiDocument));
+app.get('/api/docs', (req, res) => res.type('html').send(`<!doctype html><title>Nova Act Suite API</title><redoc spec-url="/api/openapi.json"></redoc><script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>`));
+app.post('/api/tabs/events', (req, res) => {
+  const event = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), source: req.body.source || 'unknown', target: req.body.target || 'broadcast', action: req.body.action || 'message', payload: req.body.payload || {} };
+  tabEvents.unshift(event); tabEvents.splice(100); res.status(201).json(event);
+});
+app.get('/api/tabs/events', (req, res) => res.json(tabEvents));
+app.post('/api/nova-act/session', (req, res) => res.status(202).json({ id: crypto.randomUUID(), status: 'queued', sharedAuth: Boolean(req.cookies.hf_user), targetUrl: req.body.targetUrl || 'https://nova.amazon.com/', message: 'Nova Act session accepted by the suite API.' }));
+app.get('/api/datahub/records', (req, res) => res.redirect(307, `/api/list-data${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`));
+
+
+const mindwalkLimitations = [
+  { id: 'limit-safe-navigation', label: 'Safe navigation', guardrail: 'Only navigate, read, extract, and verify unless the active persona explicitly allows mutation.', injectInto: ['nova-act', 'graph'] },
+  { id: 'limit-sensitive-fields', label: 'Sensitive-field pause', guardrail: 'Pause and request supervisor review before entering passwords, tokens, payment data, or private identifiers.', injectInto: ['nova-act', 'usersync', 'datahub'] },
+  { id: 'limit-evidence-first', label: 'Evidence-first output', guardrail: 'Return file, DOM, API, or screenshot evidence with every persona-facing recommendation.', injectInto: ['dev', 'graph', 'oasis'] }
+];
+
+app.get('/api/mindwalk/graph', (req, res) => {
+  res.json({
+    source: 'cosmtrek/mindwalk-inspired-adapter',
+    model: 'tabs-subviews-personas-limitations',
+    touchStates: ['unvisited', 'seen', 'read', 'edited', 'limited'],
+    limitations: mindwalkLimitations
+  });
+});
+
+
+app.post('/api/omniparser/parse', (req, res) => {
+  const screenName = req.body.screenName || 'Nova Act Suite';
+  const elements = Array.isArray(req.body.elements) ? req.body.elements : [
+    { id: 'viewport', type: 'panel', label: screenName, bbox: [0, 0, 100, 100], interactable: false, description: 'current application viewport' }
+  ];
+  const interactable = elements.filter((element) => element.interactable);
+  res.json({
+    source: 'microsoft/OmniParser-adapter',
+    screenshotId: `${String(screenName).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-synthetic`,
+    elements,
+    llmLanguage: [`Screen: ${screenName}.`, `Detected ${elements.length} UI elements; ${interactable.length} are interactable.`]
+      .concat(interactable.map((element) => `Use ${element.type || 'element'} "${element.label || element.id}" at bbox [${(element.bbox || []).join(', ')}] to ${element.description || 'continue the task'}.`))
+      .join(' ')
+  });
+});
+
+app.post('/api/nova-act/limitations', (req, res) => {
+  const requested = Array.isArray(req.body.limitationIds) ? req.body.limitationIds : [];
+  const selected = mindwalkLimitations.filter((limitation) => requested.length === 0 || requested.includes(limitation.id));
+  res.status(202).json({ accepted: true, selected, prompt: req.body.prompt || null });
+});
+
 app.get('/api/config', (req, res) => {
   res.json({
     clientId: OAUTH_CLIENT_ID,
