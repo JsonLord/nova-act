@@ -357,6 +357,46 @@ rows become deterministic mapping functions (reviewable curves/tables, not LLM o
 prompt rows are where the LLM composes — auto-fill uses the LLM for language and templates, and
 plain math for numbers, so numeric steering stays reproducible.
 
+### 4.4 The Steerable Observation Pipeline — *implemented*
+
+A hosted vision/text model's perception is **uncontrollable** — it sees the whole screen
+instantly, perfectly, in full color, and no prompt reliably makes it un-see things. The pipeline
+makes *observing* as steerable as thinking and acting by converting perception into **data**
+(an element list) and degrading that data deterministically before any model sees it — the
+**steerable retina**. Implemented in `backend/app/perception.py`, engine-agnostic: the same
+filter consumes DOM-serialized elements (open engine) and OmniParser output (visual surfaces).
+
+```text
+screenshot ──optical preprocessing──► parser ──► element list ──► perceptual filter ──► model
+            (CVD matrices, grayscale,  (DOM serializer v2 |       (persona-steered)
+             acuity blur — works even   OmniParser station)
+             for plain VLM paths)
+```
+
+Steered effects (all derived from persona fields via `derive_steering`, provenance per value):
+
+| Effect | Mechanism | Persona source |
+| --- | --- | --- |
+| **Vision latency** | Per-look **fixation budget**: only the top-weighted elements are perceived per observation; re-looking at the same screen widens the window — slow perception literally costs steps | `attention_span`, `fatigue` |
+| **Scan patterns (F/T/Z)** | Position weights along the reading path steer serialization order (primacy for the LLM mirrors primacy for humans), label fidelity, and omission — on-path elements get **better recognition points**, far-off-path ones vanish until scroll/re-look | `exploration_style` (satisficer→F, comparer→T, exhaustive→full) |
+| **Colorless vision** | Color-dependent elements (signal carried by color, little/no label) are dropped for CVD personas; plus optical CVD-matrix/grayscale preprocessing of the screenshot itself | `color_vision` |
+| **Acuity** | Small-element labels become "(too small to read)"; Gaussian blur on the optical path | `vision_acuity` |
+| **Recognition points** | Unlabeled icons/idioms recognized only above a digital-literacy threshold; off-path labels degrade to generic for low-literacy personas | `digital_literacy` |
+
+**The evidence delta**: every engine step records `perceived` vs `missed` (with reasons —
+"outside fixation budget", "color-only signal") — *what was on screen vs. what this persona saw*
+is itself the usability finding, and the per-element attention weights form a predicted
+per-persona attention map that plugs into the §12.2 heatmap channel and validates against
+ux-mentor heatmaps and real monitoring data.
+
+**OmniParser integration** (fork `JsonLord/OmniParser`, vendored in session): the fork ships a
+ready FastAPI station (`omnitool/omniparserserver`: `POST /parse/` → ratio-coordinate
+`parsed_content_list`). The open engine **auto-escalates** to it when a content-rich page yields
+almost no DOM interactables (canvas apps, Figma prototypes), maps results through
+`omniparser_to_elements()` into the same filter, and actuates by coordinates. Deploy as a GPU
+Space, set `OMNIPARSER_BASE_URL` (see `integrations/omniparser/README.md`; note the icon-detect
+model's AGPL license is contained to that station).
+
 Backend: **Steering & Analysis API** (`/api/steering`, `/api/analysis`), including
 `POST /api/steering/autofill` (persona ref + user-data refs → draft `SteeringConfig`). Everything
 here is versioned and provenance-linked so a journey run records exactly which steering set

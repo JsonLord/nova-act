@@ -60,6 +60,11 @@ class ObservingConfig:
     color_vision_deficiency: SteeredValue
     observation_delay_ms: SteeredValue
     reread_observations: SteeredValue
+    # Perceptual-filter inputs (spec.md §4.4 steerable observation pipeline):
+    scan_pattern: SteeredValue  # F | T | Z | full — reading/scanning habit
+    fixation_budget: SteeredValue  # elements perceived per look
+    vision_acuity: SteeredValue  # 1..5, degrades small-element recognition
+    digital_literacy: SteeredValue  # 1..5, gates icon/idiom recognition points
 
 
 @dataclass
@@ -177,6 +182,26 @@ def derive_steering(persona: UserSyncPersona, goal: str = "") -> NovaSteeringCon
             1 if mental.working_memory >= 3 else 2,
             ["mental.working_memory"],
             "low working memory re-reads the page before acting",
+        ),
+        scan_pattern=SteeredValue(
+            {"satisficer": "F", "comparer": "T", "exhaustive": "full"}[mental.exploration_style],
+            ["mental.exploration_style"],
+            "satisficers F-scan, comparers T-scan, exhaustive explorers see the full page",
+        ),
+        fixation_budget=SteeredValue(
+            2 + 2 * mental.attention_span - physical.fatigue,
+            ["mental.attention_span", "physical.fatigue"],
+            "elements perceived per look; fatigue narrows the attentional window",
+        ),
+        vision_acuity=SteeredValue(
+            physical.vision_acuity,
+            ["physical.vision_acuity"],
+            "low acuity blurs small-element labels in the perceptual filter",
+        ),
+        digital_literacy=SteeredValue(
+            mental.digital_literacy,
+            ["mental.digital_literacy"],
+            "high literacy recognizes unlabeled icons/idioms; low literacy misses them",
         ),
     )
 
