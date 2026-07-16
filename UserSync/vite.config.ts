@@ -29,6 +29,19 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        chunkSizeWarningLimit: 900,
+        rollupOptions: {
+          output: {
+            // Split heavy vendors so the main bundle stays small.
+            manualChunks: {
+              react: ['react', 'react-dom', 'react-is'],
+              charts: ['recharts'],
+              plotly: ['plotly.js'],
+            },
+          },
+        },
       }
     };
 });

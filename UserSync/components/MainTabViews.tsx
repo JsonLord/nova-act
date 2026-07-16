@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Activity, Bot, Braces, Code2, Database, GitBranch, Globe2, KeyRound, Network, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
 import LandingTab from './LandingTab';
 import SimulationPage from './SimulationPage';
@@ -10,7 +10,8 @@ import QaTestingTab from './QaTestingTab';
 import DataExtractionTab from './DataExtractionTab';
 import UiVerificationTab from './UiVerificationTab';
 import DeploymentTab from './DeploymentTab';
-import RealNetworkGraph from './RealNetworkGraph';
+// Lazy — pulls the heavy plotly chunk only when a graph view is opened.
+const RealNetworkGraph = lazy(() => import('./RealNetworkGraph'));
 import SubViewSlider, { SubView } from './SubViewSlider';
 import { getApiSpec, publishTabEvent } from '../services/tabBus';
 import MindwalkGraphView from './MindwalkGraphView';
@@ -112,7 +113,7 @@ const SimplePanel = ({ title, icon: Icon, children }: { title: string; icon: any
   </div>
 );
 
-const GraphPanel = () => <div className="mx-auto h-[680px] max-w-7xl px-6 py-12"><div className="h-full rounded-3xl border border-gray-800 bg-[#050505] p-4"><RealNetworkGraph /></div></div>;
+const GraphPanel = () => <div className="mx-auto h-[680px] max-w-7xl px-6 py-12"><div className="h-full rounded-3xl border border-gray-800 bg-[#050505] p-4"><Suspense fallback={<div className="skeleton h-full w-full rounded-2xl" />}><RealNetworkGraph /></Suspense></div></div>;
 
 const DevApiDocs = () => {
   const [spec, setSpec] = useState<any>(null);

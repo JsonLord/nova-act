@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { ChevronDown, Plus, Info, MessageSquare, BookOpen, LogOut, PanelLeftClose, MessageCircle, Menu, PanelRightClose, RefreshCw } from 'lucide-react';
-import SimulationGraph from './SimulationGraph';
+const SimulationGraph = lazy(() => import('./SimulationGraph'));
 import { GradioService } from '../services/gradioService';
 
 interface SimulationPageProps {
@@ -323,12 +323,12 @@ const SimulationPage: React.FC<SimulationPageProps> = ({
 
          {/* Graph Container */}
          <div className="flex-1 w-full h-full">
-            <SimulationGraph
+            <Suspense fallback={<div className='skeleton h-full w-full rounded-2xl' />}><SimulationGraph
               isBuilding={isBuilding}
               societyType={society}
               viewMode={viewMode}
               onStartChat={onOpenChat}
-            />
+            /></Suspense>
          </div>
 
          {/* Modals */}
