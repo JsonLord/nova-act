@@ -397,6 +397,25 @@ almost no DOM interactables (canvas apps, Figma prototypes), maps results throug
 Space, set `OMNIPARSER_BASE_URL` (see `integrations/omniparser/README.md`; note the icon-detect
 model's AGPL license is contained to that station).
 
+### 4.5 CPU / ZeroGPU deployment toggle
+
+Perception is tiered so the *same image* deploys on either hardware, controlled by
+`USERSYNC_PERCEPTION` (env default) with a runtime override:
+
+| Mode | Visual (OmniParser) escalation | Use |
+| --- | --- | --- |
+| `cpu` | **off** even if `OMNIPARSER_BASE_URL` is set | CPU-only Spaces — never reaches for a GPU |
+| `zerogpu` | **on** — escalates to the OmniParser station for canvas/Figma surfaces | GPU/ZeroGPU Spaces |
+| `auto` (default) | on when `OMNIPARSER_BASE_URL` is set, else off | let the wiring decide |
+
+The CPU tier stays **fully functional** — DOM serializer v2 plus optical CVD-matrix/grayscale/
+acuity preprocessing all run on CPU; only the OmniParser visual-parse hop is gated. The gate lives
+in `_try_omniparser` (returns `None` immediately in CPU mode — no screenshot, no network call).
+`GET /api/account/capabilities` reports the active tier; `POST /api/account/capabilities/perception`
+(logged-in) flips it at runtime without a redeploy — e.g. to instantly drop the GPU path if the
+OmniParser Space is asleep or over budget. UI: the toggle in the Deployment studio
+(`PerceptionToggle.tsx`).
+
 Backend: **Steering & Analysis API** (`/api/steering`, `/api/analysis`), including
 `POST /api/steering/autofill` (persona ref + user-data refs → draft `SteeringConfig`). Everything
 here is versioned and provenance-linked so a journey run records exactly which steering set

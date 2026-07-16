@@ -36,8 +36,26 @@ class Settings(BaseSettings):
     # "auto" (nova when configured, else open) — spec.md §17.
     usersync_engine: str = "auto"
 
+    # Perception tier — the CPU/ZeroGPU deployment toggle (spec.md §4.5):
+    #   "cpu"     — DOM serializer + optical preprocessing only; visual (OmniParser)
+    #               escalation is OFF even if a URL is set. Safe on CPU-only Spaces.
+    #   "zerogpu" — visual escalation ON; the engine escalates to the OmniParser
+    #               station for canvas/Figma surfaces (needs OMNIPARSER_BASE_URL).
+    #   "auto"    — zerogpu behavior when OMNIPARSER_BASE_URL is set, else cpu.
+    usersync_perception: str = "auto"
+
     # Account defaults
     free_credits: int = 1000
+
+    @property
+    def visual_perception_enabled(self) -> bool:
+        """Whether the engine may escalate to OmniParser (the GPU path)."""
+        mode = self.usersync_perception.strip().lower()
+        if mode == "cpu":
+            return False
+        if mode == "zerogpu":
+            return True
+        return bool(self.omniparser_base_url)  # auto
 
     @property
     def data_dir(self) -> Path:

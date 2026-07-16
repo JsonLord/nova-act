@@ -159,7 +159,11 @@ def _try_omniparser(page: Any) -> list[dict[str, Any]] | None:
     screenshot, returns parsed_content_list. None when unconfigured/failed."""
     from backend.app.config import get_settings
 
-    base = get_settings().omniparser_base_url.rstrip("/")
+    settings = get_settings()
+    # CPU/ZeroGPU deployment toggle (spec §4.5): CPU tier never reaches for GPU.
+    if not settings.visual_perception_enabled:
+        return None
+    base = settings.omniparser_base_url.rstrip("/")
     if not base:
         return None
     try:

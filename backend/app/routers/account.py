@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 
 from backend.app.envelope import envelope
 from backend.app.hf_token_auth import resolve_identity
@@ -131,6 +134,55 @@ async def llm_config_test(modality: Modality, request: Request):
             "model": resolved.model,
             "source": resolved.source,
             "reply": reply[:200],
+        }
+    )
+
+
+@router.get("/capabilities", operation_id="account_capabilities")
+def capabilities():
+    """Runtime deployment tier: the CPU/ZeroGPU perception toggle and which
+    optional engines are wired. Drives the Deployment studio's toggle UI."""
+    from backend.app.config import get_settings
+
+    settings = get_settings()
+    return envelope(
+        data={
+            "perception_mode": settings.usersync_perception,
+            "visual_perception_enabled": settings.visual_perception_enabled,
+            "perception_tier": "zerogpu" if settings.visual_perception_enabled else "cpu",
+            "omniparser_configured": bool(settings.omniparser_base_url),
+            "engine": settings.usersync_engine,
+            "nova_configured": bool(settings.nova_act_api_key),
+            "note": (
+                "CPU tier: DOM serializer + optical CVD/blur preprocessing only. "
+                "ZeroGPU tier: visual (OmniParser) escalation for canvas/Figma surfaces."
+            ),
+        }
+    )
+
+
+class PerceptionModeRequest(BaseModel):
+    mode: Literal["cpu", "zerogpu", "auto"]
+
+
+@router.post("/capabilities/perception", operation_id="account_set_perception")
+def set_perception(body: PerceptionModeRequest, request: Request):
+    """Flip the CPU/ZeroGPU perception toggle at runtime (logged-in only).
+
+    Overrides the USERSYNC_PERCEPTION env default for this running process —
+    useful to disable the GPU path instantly if the OmniParser Space is
+    sleeping or over budget, without a redeploy. Resets on restart.
+    """
+    _require_login(request)
+    from backend.app.config import get_settings
+
+    settings = get_settings()
+    settings.usersync_perception = body.mode  # mutate the cached singleton
+    return envelope(
+        data={
+            "perception_mode": settings.usersync_perception,
+            "visual_perception_enabled": settings.visual_perception_enabled,
+            "perception_tier": "zerogpu" if settings.visual_perception_enabled else "cpu",
         }
     )
 
