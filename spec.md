@@ -213,7 +213,17 @@ Tab 5).
   animation are three views of the same `graph_id`.
 
 - OASIS **network actions are conserved**: the OASIS action space (post, comment, like, repost,
-  follow, search, …) remains the simulation vocabulary.
+  follow, search, …) remains the simulation vocabulary. **Implemented** in
+  `backend/app/social_sim.py` — a dependency-light OASIS-compatible simulator that runs the
+  persona hub on CPU: activation schedules weighted by persona activity, a persona-driven action
+  policy (expressive personas post/comment, low-expressiveness lurk), and a preferential-
+  attachment recsys, producing per-timestep frames (posts, new edges, engagement) for the network
+  animation. Seeded-deterministic without an LLM; an optional BYOK text model composes post
+  content. `POST /api/social-mirror/simulations` runs it in a background thread; the run streams
+  to `completed` via polling. Network metrics (degree distribution, density, components, hubs,
+  mean sentiment) and the **real-vs-synthetic comparison** (`compare_graphs` / `POST
+  /api/social-mirror/compare` — per-metric deltas + similarity score) validate the synthetic
+  mirror against the real social-analysis graph.
 - **Nova×OASIS agent fusion** (exploration item): evaluate whether Nova Act actions can be
   translated to OASIS agent actions, or how to fuse an OASIS agent persona with a Nova agent so one
   agent has both benefits — *web navigation* (Nova) and *persona thinking in terms of website
