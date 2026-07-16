@@ -368,6 +368,8 @@ configuration? Grounded in the vendored docs (`oasis/docs/key_modules/*.mdx`,
 | Interview mechanism (`interview_record`, twitter-interview cookbook) | Ask the agent reflective questions, record Q&A in memory | Post-journey **persona interviews**: after a run, interview the persona-styled agent about the experience ("what frustrated you?") — a new class of prompt-based usability evidence |
 | Aim/task slots per business case | Goal phrasing per persona | Journey goal statements phrased in the persona's vocabulary and motivation |
 
+**Layer-1 write access (developer)**: the discovered mapping stays deterministic but is now dev-customizable — a **derivation ruleset** (`POST /api/steering/rulesets`) redefines how each parameter is computed from persona features via safe formulas (arithmetic + min/max/round/clamp over the feature namespace; no code execution) or constants, applied at `derive` time with `ruleset_id`. **Past-job corrections** (`/api/corrections`) inject audited, reversible value fixes into completed artifacts (original kept, correction logged). Both are provenance-stamped (`source: dev-derivation`, `corrections[]`).
+
 The auto-fill service (§4.2) is precisely the codification of these two tables: the mathematical
 rows become deterministic mapping functions (reviewable curves/tables, not LLM output), while the
 prompt rows are where the LLM composes — auto-fill uses the LLM for language and templates, and

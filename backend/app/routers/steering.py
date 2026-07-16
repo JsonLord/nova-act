@@ -47,26 +47,97 @@ class DeriveRequest(BaseModel):
     persona_index: int = 0
     persona: dict[str, Any] | None = None  # inline persona (to_dict shape)
     goal: str = ""
+    ruleset_id: str | None = None  # layer-1 write: custom derivation rules
+
+
+def _load_ruleset(user_id: str, ruleset_id: str | None) -> dict | None:
+    if not ruleset_id:
+        return None
+    record = load_artifact(user_id, "steering", ruleset_id)
+    if record is None or record["kind"] != "derivation_ruleset":
+        raise HTTPException(status_code=404, detail="derivation ruleset not found")
+    return record["data"].get("rules", {})
 
 
 @router.post("/derive", operation_id="steering_derive")
 def derive(body: DeriveRequest, user_id: str = Depends(get_user_id)):
-    """Compute the read-only discovered steering for a persona (layer 1).
+    """Compute the discovered steering for a persona (layer 1).
 
-    Deterministic — a programmatic 'runner' over derive_steering for
-    developers, accepting a stored hub reference or an inline persona."""
+    Deterministic runner over derive_steering. With `ruleset_id`, applies a
+    developer-authored derivation ruleset (layer-1 write) that redefines how
+    each parameter is computed from the persona's features."""
     from oasis.generator.steering import build_act_prompt, derive_steering
 
     persona = _persona_from_request(user_id, body.persona_hub_id, body.persona_index, body.persona)
-    config = derive_steering(persona, goal=body.goal)
+    config = derive_steering(persona, goal=body.goal).to_dict()
+    rules = _load_ruleset(user_id, body.ruleset_id)
+    layer = "discovered (read-only)"
+    if rules:
+        from backend.app.steering_apply import OverrideError
+        from backend.app.steering_derivation import apply_ruleset
+
+        try:
+            config = apply_ruleset(config, persona, rules)
+            layer = "discovered + dev-derivation ruleset"
+        except OverrideError as error:
+            raise HTTPException(status_code=422, detail=str(error))
     return envelope(
         data={
-            "steering": config.to_dict(),
+            "steering": config,
             "act_prompt": build_act_prompt(persona, body.goal or "Explore the product."),
-            "layer": "discovered (read-only)",
+            "layer": layer,
         },
-        provenance=config.provenance,
     )
+
+
+# --- Layer-1 write: derivation rulesets (how parameters are computed) --------
+
+class DerivationRuleset(BaseModel):
+    name: str = "derivation"
+    rules: dict[str, dict] = Field(default_factory=dict)  # path -> {type, expr|value}
+
+
+@router.post("/rulesets", operation_id="steering_ruleset_create")
+def create_ruleset(body: DerivationRuleset, user_id: str = Depends(get_user_id)):
+    from backend.app.steering_apply import OverrideError
+    from backend.app.steering_derivation import validate_ruleset
+
+    try:
+        validate_ruleset(body.rules)
+    except OverrideError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    record = save_artifact(user_id, "steering", "derivation_ruleset", body.model_dump(),
+                           provenance={"layer": "dev-derivation"})
+    return envelope(data={**body.model_dump(), "id": record["artifact_id"]},
+                    artifact_id=record["artifact_id"])
+
+
+@router.get("/rulesets", operation_id="steering_ruleset_list")
+def list_rulesets(user_id: str = Depends(get_user_id)):
+    return envelope(data=[e for e in list_artifacts(user_id, "steering") if e["kind"] == "derivation_ruleset"])
+
+
+@router.post("/rulesets/preview", operation_id="steering_ruleset_preview")
+def preview_ruleset(body: DeriveRequest, user_id: str = Depends(get_user_id)):
+    """Evaluate a ruleset (by id) against one persona — test formulas before
+    saving. Returns per-field default vs computed."""
+    from oasis.generator.steering import derive_steering
+
+    persona = _persona_from_request(user_id, body.persona_hub_id, body.persona_index, body.persona)
+    base = derive_steering(persona).to_dict()
+    rules = _load_ruleset(user_id, body.ruleset_id) or {}
+    from backend.app.steering_apply import OverrideError
+    from backend.app.steering_derivation import apply_ruleset
+
+    try:
+        computed = apply_ruleset(base, persona, rules)
+    except OverrideError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    diff = {}
+    for path in rules:
+        block, key = path.split(".", 1)
+        diff[path] = {"default": base[block][key].get("value"), "computed": computed[block][key]["value"]}
+    return envelope(data={"diff": diff, "steering": computed})
 
 
 # --- Layer 2 (authored) developer access: profiles + apply -------------------
