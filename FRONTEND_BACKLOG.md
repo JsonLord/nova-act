@@ -5,7 +5,11 @@
 > Console** (layer-1 read / layer-1 write rulesets / layer-2 / audited corrections), **Social
 > Mirror** animation, **Action Trace** analysis + graph answers, **Account** panel, plus the
 > earlier Journey Console / Persona Hub / UX Chain / BYOK / Perception toggle. Remaining:
-> Phase 0 build-time Tailwind + routing, journey evidence overlay, motion polish, rebrand copy.
+> ✅ Phase 0 (build-time Tailwind, code-split, lazy plotly — 4.4MB→464KB initial), Phase 1
+> (journey evidence: step screenshots + perception delta), Phase 2 (persona Enrich button;
+> Steering Lab lives in the Dev console), Phase 6 (directional view transitions keyed to slider
+> index, auto-scroll active card, skeleton loaders, prefers-reduced-motion; per-tab promise lines
+> from branding.ts). Remaining: URL routing/deep-links, and deeper per-tab polish.
 
 Backend capabilities that have landed ahead of their UI. Each item is a frontend surface to build
 against an existing, tested API. Grouped by tab (spec.md §3).

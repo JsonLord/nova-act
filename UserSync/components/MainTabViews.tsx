@@ -23,6 +23,7 @@ import DevSteeringConsole from './DevSteeringConsole';
 import SocialMirror from './SocialMirror';
 import AnalysisGraph from './AnalysisGraph';
 import AccountPanel from './AccountPanel';
+import { TAB_PROMISES } from '../branding';
 
 export type MainTabId = 'usersync' | 'nova-act' | 'datahub' | 'oasis' | 'graph' | 'dev';
 
@@ -123,8 +124,18 @@ const DevApiDocs = () => {
 
 const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
   const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering' });
+  // Direction of the last view change → directional slide (spec §11): moving to
+  // a higher-index subview slides in from the right, lower from the left.
+  const [direction, setDirection] = useState<1 | -1>(1);
   const activeView = activeViews[props.tab] || viewsByTab[props.tab][0].id;
-  const setActiveView = (view: string) => { setActiveViews((prev) => ({ ...prev, [props.tab]: view })); publishTabEvent({ source: 'frontend', target: props.tab, action: 'view.changed', payload: { view } }); };
+  const setActiveView = (view: string) => {
+    const views = viewsByTab[props.tab];
+    const from = views.findIndex((v) => v.id === activeView);
+    const to = views.findIndex((v) => v.id === view);
+    setDirection(to >= from ? 1 : -1);
+    setActiveViews((prev) => ({ ...prev, [props.tab]: view }));
+    publishTabEvent({ source: 'frontend', target: props.tab, action: 'view.changed', payload: { view } });
+  };
   const content = useMemo(() => {
     if (props.tab === 'usersync') {
       if (activeView === 'simulation') return <SimulationPage onBack={() => setActiveView('overview')} onOpenChat={() => setActiveView('content')} onOpenGuide={props.onOpenGuide} user={props.user} onLogin={props.onLogin} onLogout={props.onLogout} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} />;
@@ -139,7 +150,21 @@ const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
     if (props.tab === 'dev') return activeView === 'steering' ? <DevSteeringConsole /> : activeView === 'account' ? <AccountPanel /> : activeView === 'api' ? <DevApiDocs /> : activeView === 'events' ? <SimplePanel title="Tab Bus Contract" icon={Braces}>Publish tab communication with <code>POST /api/tabs/events</code>. Read the queue with <code>GET /api/tabs/events</code>. The schema is visible in API docs.</SimplePanel> : <SimplePanel title="Runtime Status" icon={Activity}>Frontend build, Express compatibility API, and FastAPI reference backend are included for delivery.</SimplePanel>;
   }, [activeView, props]);
 
-  return <><SubViewSlider views={viewsByTab[props.tab]} activeView={activeView} onViewChange={setActiveView} />{content}</>;
+  return (
+    <>
+      {/* Per-tab service promise (branding.ts). */}
+      {TAB_PROMISES[props.tab] && (
+        <div className="mx-auto max-w-[1600px] px-4 pt-4">
+          <p className="text-xs font-medium text-gray-500">{TAB_PROMISES[props.tab]}</p>
+        </div>
+      )}
+      <SubViewSlider views={viewsByTab[props.tab]} activeView={activeView} onViewChange={setActiveView} />
+      {/* Keyed on tab:view so each switch re-mounts with a directional slide. */}
+      <div key={`${props.tab}:${activeView}`} className={direction === 1 ? 'animate-view-right' : 'animate-view-left'}>
+        {content}
+      </div>
+    </>
+  );
 };
 
 export default MainTabViews;

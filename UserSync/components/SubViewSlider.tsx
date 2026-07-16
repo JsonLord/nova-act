@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 export interface SubView<T extends string = string> {
@@ -15,10 +15,16 @@ interface SubViewSliderProps<T extends string = string> {
 
 const SubViewSlider = <T extends string>({ views, activeView, onViewChange }: SubViewSliderProps<T>) => {
   const activeIndex = Math.max(0, views.findIndex((view) => view.id === activeView));
+  const activeRef = useRef<HTMLButtonElement | null>(null);
   const move = (direction: -1 | 1) => {
     const nextIndex = (activeIndex + direction + views.length) % views.length;
     onViewChange(views[nextIndex].id);
   };
+
+  // Keep the active card in view as the user pages through subviews.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [activeView]);
 
   return (
     <div className="sticky top-[53px] z-40 border-b border-gray-800 bg-black/85 backdrop-blur-xl">
@@ -36,8 +42,9 @@ const SubViewSlider = <T extends string>({ views, activeView, onViewChange }: Su
             return (
               <button
                 key={view.id}
+                ref={active ? activeRef : undefined}
                 onClick={() => onViewChange(view.id)}
-                className={`min-w-[190px] rounded-2xl border px-4 py-3 text-left transition ${
+                className={`min-w-[190px] rounded-2xl border px-4 py-3 text-left transition duration-fast ${
                   active
                     ? 'border-teal-400 bg-teal-500/10 shadow-lg shadow-teal-950/40'
                     : 'border-gray-800 bg-gray-950/70 hover:border-gray-700 hover:bg-gray-900'

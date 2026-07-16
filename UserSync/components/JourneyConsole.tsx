@@ -15,6 +15,10 @@ interface JourneyStep {
   args: Record<string, unknown>;
   ok?: boolean;
   error?: string;
+  screenshot?: string | null;
+  perceived?: number;
+  missed?: number;
+  missed_elements?: { text: string; reason: string }[];
 }
 
 interface JourneyRun {
@@ -33,22 +37,41 @@ const STATUS_COLORS: Record<string, string> = {
   queued: 'text-amber-300',
 };
 
-const StepCard: React.FC<{ step: JourneyStep }> = ({ step }) => (
-  <div className="space-y-2">
-    {step.think && (
-      <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-gray-800 bg-[#101014] p-3">
-        <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-violet-300">
-          <Sparkles size={10} /> think
-        </div>
-        <p className="text-xs leading-relaxed text-gray-300">{step.think}</p>
-      </div>
+const StepCard: React.FC<{ step: JourneyStep; runId: string }> = ({ step, runId }) => (
+  <div className="flex gap-3">
+    {/* Evidence: the screenshot the persona actually saw (optically degraded). */}
+    {step.screenshot && (
+      <img
+        src={`/api/journeys/${runId}/screenshot/${step.i}`}
+        alt={`step ${step.i}`}
+        className="h-20 w-28 flex-shrink-0 rounded-lg border border-gray-800 object-cover object-top"
+      />
     )}
-    <div className="flex items-center gap-2 pl-2">
-      <MousePointerClick size={12} className={step.ok === false ? 'text-rose-400' : 'text-teal-400'} />
-      <code className="rounded-lg bg-black px-2 py-1 text-[11px] text-teal-200">
-        {step.action}({JSON.stringify(step.args)})
-      </code>
-      {step.error && <span className="text-[10px] text-rose-400">{step.error}</span>}
+    <div className="min-w-0 flex-1 space-y-2">
+      {step.think && (
+        <div className="max-w-[85%] rounded-2xl rounded-bl-sm border border-gray-800 bg-[#101014] p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-violet-300">
+            <Sparkles size={10} /> think
+          </div>
+          <p className="text-xs leading-relaxed text-gray-300">{step.think}</p>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 pl-2">
+        <MousePointerClick size={12} className={step.ok === false ? 'text-rose-400' : 'text-teal-400'} />
+        <code className="rounded-lg bg-black px-2 py-1 text-[11px] text-teal-200">
+          {step.action}({JSON.stringify(step.args)})
+        </code>
+        {step.error && <span className="text-[10px] text-rose-400">{step.error}</span>}
+        {/* Perception delta — saw vs missed. */}
+        {(step.perceived != null || step.missed != null) && (
+          <span
+            className="text-[9px] text-gray-500"
+            title={(step.missed_elements || []).map((m) => `${m.text || 'element'}: ${m.reason}`).join('\n')}
+          >
+            👁 saw {step.perceived ?? 0}{step.missed ? ` · missed ${step.missed}` : ''}
+          </span>
+        )}
+      </div>
     </div>
   </div>
 );
@@ -177,7 +200,7 @@ const JourneyConsole: React.FC = () => {
               Launch a journey below — the agent's steps and thinking stream here, one act at a time.
             </p>
           )}
-          {run?.steps.map((step) => <StepCard key={step.i} step={step} />)}
+          {run?.steps.map((step) => <StepCard key={step.i} step={step} runId={activeRunId} />)}
           {run?.result && (
             <div className={`rounded-2xl border p-3 text-xs ${run.status === 'completed' ? 'border-green-500/30 bg-green-500/5 text-green-300' : 'border-rose-500/30 bg-rose-500/5 text-rose-300'}`}>
               {run.result}

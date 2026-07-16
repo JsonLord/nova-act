@@ -71,8 +71,22 @@ const RenderFlow: React.FC = () => {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [target, setTarget] = useState(0);
   const [rendering, setRendering] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [selected, setSelected] = useState<Node | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const enrich = async () => {
+    setEnriching(true);
+    try {
+      await api(`/api/personas/${hubId}/enrich`, { body: { batch_size: 10, concurrency: 8 } });
+      const graph = await apiData(`/api/personas/${hubId}/graph`);
+      setNodes(graph.nodes || []);
+    } catch {
+      /* enrichment needs a BYOK text model; leave templated text */
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   useEffect(() => {
     SOURCES.forEach((s) =>
@@ -176,9 +190,20 @@ const RenderFlow: React.FC = () => {
             </div>
           ) : (
             <>
-              <div className="mb-3 text-[11px] text-gray-400">
-                {rendering ? `Shaping persona ${nodes.length} of ${target}…` : `${nodes.length} personas`}
-                {nodes.at(-1)?.provenance?.datahub_snapshot_ids?.length ? ' · shaped by DataHub cohort' : ' · synthetic'}
+              <div className="mb-3 flex items-center justify-between text-[11px] text-gray-400">
+                <span>
+                  {rendering ? `Shaping persona ${nodes.length} of ${target}…` : `${nodes.length} personas`}
+                  {nodes.at(-1)?.provenance?.datahub_snapshot_ids?.length ? ' · shaped by DataHub cohort' : ' · synthetic'}
+                </span>
+                {!rendering && hubId && (
+                  <button
+                    onClick={enrich}
+                    disabled={enriching}
+                    className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300 transition hover:bg-violet-500/20"
+                  >
+                    {enriching ? 'Enriching…' : '✨ Enrich (LLM)'}
+                  </button>
+                )}
               </div>
               <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {nodes.map((node) => (
