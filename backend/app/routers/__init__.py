@@ -22,7 +22,7 @@ PACKS = {
     "auth": [auth.router],
     "personas": [personas.router],
     "steering": [steering.router],
-    "datahub": [datahub.router, datahub.connectors_router],
+    "datahub": [datahub.router, datahub.connectors_router, datahub.graph_store_router],
     "journeys": [journeys.router],
     "analysis": [analysis.router, analysis.qa_router],
     "social": [social.router],

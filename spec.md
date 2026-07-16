@@ -188,8 +188,14 @@ The data workstation. Visualizations are first-class here.
   generation (feeding the OASIS `generator/` entry point). Pipelines are configured here; runs are
   logged with provenance.
 - **`last30days` (paid extra service)**: brings in recent social data from various platforms,
-  stored normalized and cleansed as **research drops**. (ML processing of these drops: later,
-  explicitly out of scope for now.)
+  stored normalized and cleansed as **research drops**. Implemented as
+  `POST /api/connectors/last30days/import` (`backend/app/connectors/last30days.py`), a thin
+  adapter over the vendored skill — **no new site integrations declared**; platform coverage is
+  the skill's own: reddit, x/twitter, tiktok, instagram, youtube, bluesky, hackernews,
+  truthsocial, grounded web. Each platform's auth/keys are the skill's concern (its keychain /
+  `HERMES_SETUP.md`); without them the connector returns a simulated drop so the unify pipeline
+  stays testable. The drop feeds `/api/datahub/unify` via `research_drop_id`. (ML processing of
+  these drops: later, explicitly out of scope for now.)
 - **Monitoring integrations**: connectors to web/website monitoring services for real user-behavior
   telemetry, used to **validate** (and record *did validate*) the synthesized persona datasets.
 - **Graph store**: placeholder for Amazon Neptune or Neo4j behind a `/api/graph-store` abstraction;
@@ -1101,9 +1107,29 @@ waits, frustration abort) — all first-class instead of layered around a closed
    abort) in the actuation layer; per-step screenshot + click-coordinate capture feeding the
    §12.2 heatmaps.
 4. ✅ **Vision mode (optional flag)** — implemented: `vision_mode` on `POST /api/journeys` decides each step from a persona-degraded, set-of-marks-annotated screenshot sent to the BYOK vision slot (same action-JSON contract), for visually dense pages where the DOM path underperforms.
-5. **NovaEngine adapter**: wrap the nova_act SDK behind the same protocol; parity test = same
-   journey, both engines, identical trace schema; document infra deltas (needs
-   `NOVA_ACT_API_KEY`; intended for non-Space deployments or a premium tier).
+5. **NovaEngine adapter** *(planned — item 3)*: wrap the `nova_act` SDK behind the same
+   `EngineProtocol` so `USERSYNC_ENGINE=nova` executes instead of queueing. Concrete plan:
+   - A `backend/app/engines/nova_engine.py` with `run_journey_nova(user_id, run_id, run,
+     provenance)` mirroring the open engine's signature and re-persisting the same artifact
+     shape (steps with `think`/`action`/`args`/`x`/`y`, screenshots, heatmap) so **all
+     downstream analysis is engine-blind**.
+   - Inside: `with NovaAct(starting_page=run["target_url"], nova_act_api_key=…, headless=True,
+     screen_width/height from steering viewport) as nova:` then drive with the composed
+     `act_prompt`; capture each step from Nova's event stream / `think()` calls and
+     `page.screenshot()` for evidence. Steering binds where Nova allows it: viewport +
+     `user_agent` at construction, `tools`/guardrails per act, pacing via `max_steps`/`timeout`;
+     the perceptual filter and vision degradation do **not** apply (Nova owns its own
+     observation) — that's the deliberate quality/portability trade of the fallback tier.
+   - The journeys router already resolves `engine.name == "nova"` and currently warns+queues;
+     the adapter swaps that branch for `submit(user_id, "journey", nova_worker, …)` through the
+     same bounded job runner.
+   - **Parity test**: run one scripted journey through both engines against a local fixture and
+     assert identical trace *schema* (not identical actions — models differ); assert analysis
+     builds from either.
+   - **Infra deltas**: needs `nova-act` installed + `NOVA_ACT_API_KEY`; targets non-Space
+     deployments (AWS) or a premium tier. Auto-escalation hook: when the open engine aborts on
+     the frustration threshold for a visually complex page, optionally re-run on Nova — the
+     escalation itself is a product/upsell signal.
 6. **Cutover**: `/api/journeys` executes via `resolve_engine()`; free tier defaults to
    OpenEngine on the Space, Nova becomes the premium/self-hosted path.
 

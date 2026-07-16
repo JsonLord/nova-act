@@ -16,10 +16,36 @@ from pydantic import BaseModel, Field
 
 from backend.app.envelope import envelope
 from backend.app.quota import charge, get_user_id
-from backend.app.storage import list_artifacts, save_artifact
+from backend.app.storage import list_artifacts, load_artifact, save_artifact
 
 router = APIRouter(prefix="/api/datahub", tags=["datahub"])
 connectors_router = APIRouter(prefix="/api/connectors", tags=["connectors"])
+graph_store_router = APIRouter(prefix="/api/graph-store", tags=["graph-store"])
+
+
+@graph_store_router.get("/status", operation_id="graph_store_status")
+def graph_store_status():
+    """Neo4j/Neptune connection status (spec §10). Reports configured +
+    live connectivity; safe to call whether or not secrets are set."""
+    from backend.app.graph_store import status
+
+    return envelope(data=status())
+
+
+class GraphExportRequest(BaseModel):
+    persona_hub_id: str
+
+
+@graph_store_router.post("/export", operation_id="graph_store_export")
+def graph_store_export(body: GraphExportRequest, user_id: str = Depends(get_user_id)):
+    """Export a persona hub's graph to Neo4j (placeholder — dry-run summary
+    until a real DB is attached in-Space)."""
+    from backend.app.graph_store import export_graph
+
+    hub = load_artifact(user_id, "personas", body.persona_hub_id)
+    if hub is None:
+        raise HTTPException(status_code=404, detail="persona hub not found")
+    return envelope(data=export_graph(body.persona_hub_id, hub["data"]["graph"]))
 
 
 class CrmRecord(BaseModel):
@@ -50,6 +76,7 @@ class UnifyRequest(BaseModel):
     mode: Literal["synthetic", "company", "company_social"] = "synthetic"
     crm_records: list[CrmRecord] = Field(default_factory=list)
     research_drop: ResearchDropSummary | None = None
+    research_drop_id: str | None = None  # reference a stored last30days drop
     monitoring_avg_session_s: float | None = None
 
 
@@ -77,6 +104,17 @@ def unify(
     traits: dict[str, Any] = {"mode": body.mode}
     warnings: list[str] = []
 
+    # Resolve a stored research drop (from /api/connectors/last30days/import).
+    research_drop = body.research_drop
+    if research_drop is None and body.research_drop_id:
+        drop_record = load_artifact(user_id, "research_drops", body.research_drop_id)
+        if drop_record is None:
+            raise HTTPException(status_code=404, detail="research_drop_id not found")
+        research_drop = ResearchDropSummary(**{
+            k: v for k, v in drop_record["data"].items()
+            if k in ResearchDropSummary.model_fields
+        })
+
     if body.mode in ("company", "company_social") and body.crm_records:
         ages = [r.age for r in body.crm_records if r.age]
         if ages:
@@ -101,8 +139,8 @@ def unify(
     elif body.mode in ("company", "company_social"):
         warnings.append("mode requires crm_records; falling back to synthetic defaults")
 
-    if body.mode == "company_social" and body.research_drop is not None:
-        drop = body.research_drop
+    if body.mode == "company_social" and research_drop is not None:
+        drop = research_drop
         center = max(-2, min(2, round(drop.sentiment * 2)))
         traits["brand_affinity"] = _affinity_distribution(center)
         traits["opinion_topics"] = drop.top_topics[:3] or None
@@ -124,7 +162,7 @@ def unify(
         provenance={
             "mode": body.mode,
             "crm_records": len(body.crm_records),
-            "research_drop": body.research_drop is not None,
+            "research_drop": research_drop is not None,
         },
     )
     return envelope(
@@ -200,6 +238,40 @@ def figma_import(
             {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
             {"action": "journey", "endpoint": "/api/journeys"},
         ],
+    )
+
+
+class ResearchDropRequest(BaseModel):
+    topic: str  # the customer profile / brand to research
+    platforms: list[str] = Field(default_factory=lambda: ["reddit", "x"])
+
+
+@connectors_router.post("/last30days/import", operation_id="connector_last30days_import")
+def last30days_import(
+    body: ResearchDropRequest,
+    user_id: str = Depends(get_user_id),
+    meter: dict = Depends(charge("research_drop", cost=8)),
+):
+    """Paid research-drops service: run last30days across the requested
+    platforms and store a normalized ResearchDropSummary that feeds
+    /api/datahub/unify. Platforms are the skill's own coverage (reddit, x,
+    tiktok, instagram, youtube, bluesky, hackernews, truthsocial, web)."""
+    from backend.app.connectors.last30days import SUPPORTED_PLATFORMS, research
+
+    summary = research(body.topic, body.platforms)
+    record = save_artifact(
+        user_id, "research_drops", "research_drop", summary,
+        provenance={"connector": "last30days", "topic": body.topic,
+                    "platforms": summary["platforms"], "simulated": summary["simulated"]},
+    )
+    return envelope(
+        data={"topic": body.topic, "summary": summary, "supported_platforms": SUPPORTED_PLATFORMS},
+        artifact_id=record["artifact_id"],
+        provenance=record["provenance"],
+        quota=meter,
+        warnings=["last30days skill not runnable here; returned a simulated drop"]
+        if summary["simulated"] else [],
+        next_actions=[{"action": "unify", "endpoint": "/api/datahub/unify"}],
     )
 
 
