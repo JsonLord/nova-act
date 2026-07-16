@@ -53,24 +53,38 @@ def llm_providers():
     )
 
 
+def _require_login(request: Request):
+    """Credentials are session-only and bound to a logged-in HF identity —
+    anonymous callers must use per-request X-LLM-* headers instead."""
+    identity = resolve_identity(request)
+    if identity.via == "anonymous":
+        raise HTTPException(
+            status_code=401,
+            detail="Sign in with Hugging Face to store keys for this session "
+            "(or pass X-LLM-* headers per request without storing anything)",
+        )
+    return identity
+
+
 @router.get("/llm-config", operation_id="account_llm_config_get")
 def llm_config_get(request: Request):
-    identity = resolve_identity(request)
+    identity = _require_login(request)
     config = load_llm_config(identity.user_id)
     return envelope(
         data={
             "text": config.text.masked() if config and config.text else None,
             "vision": config.vision.masked() if config and config.vision else None,
+            "storage": "session-only (in-memory, TTL 12h, cleared on restart)",
         }
     )
 
 
 @router.post("/llm-config", operation_id="account_llm_config_set")
 def llm_config_set(body: LlmConfig, request: Request):
-    """Save BYOK slots. Keys live only in the caller's own artifact area and
-    are masked on every read. Sending a slot without api_key keeps the
-    previously stored key for that slot."""
-    identity = resolve_identity(request)
+    """Save BYOK slots for the logged-in HF user's session. Keys are held
+    in-memory only (TTL-bound, never persisted) and masked on every read.
+    Sending a slot without api_key keeps the previously stored key."""
+    identity = _require_login(request)
     previous = load_llm_config(identity.user_id)
     for modality in ("text", "vision"):
         slot = getattr(body, modality)
@@ -89,7 +103,7 @@ def llm_config_set(body: LlmConfig, request: Request):
 
 @router.delete("/llm-config", operation_id="account_llm_config_delete")
 def llm_config_delete(request: Request):
-    identity = resolve_identity(request)
+    identity = _require_login(request)
     save_llm_config(identity.user_id, LlmConfig())
     return envelope(data={"text": None, "vision": None})
 
@@ -98,7 +112,7 @@ def llm_config_delete(request: Request):
 async def llm_config_test(modality: Modality, request: Request):
     """Fire a one-token live call through the resolved slot so the user can
     verify provider/model/token before running real workloads."""
-    identity = resolve_identity(request)
+    identity = _require_login(request)
     resolved = resolve_llm(request, identity.user_id, modality)
     if resolved is None:
         raise HTTPException(status_code=404, detail=f"No {modality} model configured")

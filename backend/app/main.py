@@ -45,6 +45,11 @@ def create_app() -> FastAPI:
     def healthz():
         return {"status": "ok", "packs": enabled}
 
+    if settings.usersync_public_base_url:
+        # Set once the HF Space URL is known: absolute server URL for
+        # generated clients and MCP tools.
+        app.servers = [{"url": settings.usersync_public_base_url.rstrip("/")}]
+
     @app.get("/mcp", tags=["meta"], operation_id="mcp_manifest")
     def mcp_manifest():
         """MCP-compatible tool manifest generated from the pack APIs, so
@@ -74,7 +79,11 @@ def create_app() -> FastAPI:
                         "input_schema": body_schema or {"type": "object"},
                     }
                 )
-        return {"tools": tools, "packs": enabled}
+        return {
+            "tools": tools,
+            "packs": enabled,
+            "base_url": settings.usersync_public_base_url.rstrip("/") or None,
+        }
 
     # Serve the built frontend when present (full-app deployment).
     dist = Path(__file__).resolve().parents[2] / "UserSync" / "dist"

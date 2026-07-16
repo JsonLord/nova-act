@@ -10,20 +10,24 @@ Resolution order per request and modality:
 1. Request headers (nothing stored):
      text:   X-LLM-Provider / X-LLM-Model / X-LLM-Key / X-LLM-Base-Url
      vision: X-LLM-Vision-Provider / -Model / -Key / -Base-Url
-2. The caller's saved config (POST /api/account/llm-config; keys live in the
-   user's own artifact area and are always masked on read).
+2. The caller's saved config (POST /api/account/llm-config) — **session-only
+   and logged-in only**: configs live in an in-process store with a TTL,
+   keyed to the authenticated HF identity. Keys never touch disk, vanish on
+   Space restart or TTL expiry, and are always masked on read. Anonymous
+   callers cannot store keys (401) — they use per-request headers instead.
 3. Server env fallback (BLABLADOR_API_KEY -> free text slot; no vision default).
 """
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Literal
 
 from fastapi import Request
 from pydantic import BaseModel, Field
 
 from backend.app.config import get_settings
-from backend.app.storage import load_artifact, save_artifact
 
 Modality = Literal["text", "vision"]
 
@@ -124,25 +128,27 @@ class ResolvedLlm(BaseModel):
     source: str  # "headers" | "saved" | "server_env"
 
 
-CONFIG_ARTIFACT_ID = "llm-config"
+# Session-only credential store: in-process, TTL-bound, never written to disk.
+SESSION_TTL_S = 12 * 3600.0
+_session_lock = threading.Lock()
+_session_store: dict[str, tuple[float, LlmConfig]] = {}  # user_id -> (expires_at, config)
 
 
 def save_llm_config(user_id: str, config: LlmConfig) -> None:
-    save_artifact(
-        user_id,
-        "account",
-        "llm_config",
-        config.model_dump(),
-        provenance={"byok": True},
-        artifact_id=CONFIG_ARTIFACT_ID,
-    )
+    with _session_lock:
+        _session_store[user_id] = (time.time() + SESSION_TTL_S, config)
 
 
 def load_llm_config(user_id: str) -> LlmConfig | None:
-    record = load_artifact(user_id, "account", CONFIG_ARTIFACT_ID)
-    if record is None:
-        return None
-    return LlmConfig(**record["data"])
+    with _session_lock:
+        entry = _session_store.get(user_id)
+        if entry is None:
+            return None
+        expires_at, config = entry
+        if expires_at < time.time():
+            del _session_store[user_id]
+            return None
+        return config
 
 
 def _slot_from_headers(request: Request, modality: Modality) -> LlmSlot | None:

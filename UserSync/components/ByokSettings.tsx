@@ -139,6 +139,7 @@ const ByokSettings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState('');
   const [testing, setTesting] = useState<Modality | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [testResults, setTestResults] = useState<Record<Modality, { ok: boolean; detail: string } | null>>({
     text: null,
     vision: null,
@@ -150,7 +151,13 @@ const ByokSettings: React.FC = () => {
       .then((body) => body?.data && setProviders(body.data))
       .catch(() => undefined);
     fetch('/api/account/llm-config')
-      .then((response) => (response.ok ? response.json() : null))
+      .then((response) => {
+        if (response.status === 401) {
+          setNeedsLogin(true);
+          return null;
+        }
+        return response.ok ? response.json() : null;
+      })
       .then((body) => {
         const config = body?.data;
         if (config?.text) setTextSlot({ ...config.text, api_key: '', keyStored: config.text.api_key_set });
@@ -210,6 +217,13 @@ const ByokSettings: React.FC = () => {
       <h3 className="flex items-center gap-2 border-b border-gray-900 pb-2 text-xs font-bold uppercase tracking-wider text-teal-400">
         <KeyRound size={14} /> Bring Your Own Key — LLM providers
       </h3>
+      {needsLogin && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-[11px] text-amber-300">
+          Sign in with Hugging Face to store keys. Keys are held <b>only for your session</b> (in-memory,
+          12h TTL, never written to disk) and are visible only to your logged-in account. Without login,
+          pass keys per request via <code className="font-mono">X-LLM-*</code> headers instead.
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <SlotCard
           modality="text"

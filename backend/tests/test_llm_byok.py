@@ -18,7 +18,9 @@ def client(monkeypatch, tmp_path):
     from backend.app.config import get_settings
 
     get_settings.cache_clear()
-    yield TestClient(create_app())
+    test_client = TestClient(create_app())
+    test_client.cookies.set("hf_user", '{"preferred_username": "leon"}')
+    yield test_client
     get_settings.cache_clear()
 
 
@@ -71,7 +73,7 @@ def test_resolution_order_headers_saved_env(client, monkeypatch):
         "/api/account/llm-config",
         json={"text": {"provider": "openai", "api_key": "sk-saved"}},
     )
-    saved = resolve_llm(FakeRequest(), "anonymous", "text")
+    saved = resolve_llm(FakeRequest(), "leon", "text")
     assert saved.source == "saved" and saved.model == "gpt-4.1-mini"
 
     # Headers override saved, with separate vision headers.
@@ -81,8 +83,8 @@ def test_resolution_order_headers_saved_env(client, monkeypatch):
         "x-llm-vision-provider": "gemini",
         "x-llm-vision-key": "AIza-header",
     }
-    text = resolve_llm(FakeRequest(headers), "anonymous", "text")
-    vision = resolve_llm(FakeRequest(headers), "anonymous", "vision")
+    text = resolve_llm(FakeRequest(headers), "leon", "text")
+    vision = resolve_llm(FakeRequest(headers), "leon", "vision")
     assert (text.provider, text.source) == ("blablador", "headers")
     assert (vision.provider, vision.model) == ("gemini", "gemini-2.0-flash")
 
@@ -106,3 +108,29 @@ def test_env_fallback_for_text_only(client, monkeypatch):
     assert (resolved.provider, resolved.source) == ("blablador", "server_env")
     assert resolve_llm(FakeRequest(), "someone-unconfigured", "vision") is None
     get_settings.cache_clear()
+
+
+def test_credentials_are_session_only_and_login_gated(client):
+    import json as jsonlib
+    from pathlib import Path
+
+    # Anonymous callers cannot store or read stored keys.
+    anonymous = client.__class__(client.app)
+    assert anonymous.get("/api/account/llm-config").status_code == 401
+    assert anonymous.post(
+        "/api/account/llm-config", json={"text": {"provider": "openai", "api_key": "sk-x"}}
+    ).status_code == 401
+
+    # Logged-in save works — and the key never touches disk.
+    client.post("/api/account/llm-config", json={"text": {"provider": "openai", "api_key": "sk-session-secret"}})
+    data_dir = Path(__import__("os").environ["USERSYNC_DATA_DIR"])
+    on_disk = "".join(p.read_text() for p in data_dir.rglob("*.json"))
+    assert "sk-session-secret" not in on_disk
+
+    # TTL expiry clears the session config.
+    from backend.app import llm_config as mod
+
+    with mod._session_lock:
+        expires, config = mod._session_store["leon"]
+        mod._session_store["leon"] = (0.0, config)
+    assert client.get("/api/account/llm-config").json()["data"]["text"] is None

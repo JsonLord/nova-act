@@ -11,6 +11,10 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Which packs this deployment exposes: "all" or csv, e.g. "personas,steering"
     usersync_packs: str = "all"
+    # Public URL of this deployment (the HF Space URL, set once known) —
+    # reflected in openapi servers and the /mcp manifest so generated clients
+    # and MCP tools point at the right host. Empty = relative paths only.
+    usersync_public_base_url: str = ""
     # Artifact root: HF Spaces persistent storage when present, ./data otherwise
     usersync_data_dir: str = ""
 
