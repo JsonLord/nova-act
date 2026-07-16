@@ -1,5 +1,12 @@
 # UserSync Frontend Backlog
 
+> **Status:** first pass of all tabs built and wired to the real backend via the `<>` view
+> slider (`services/api.ts` client). Shipped views: DataHub **Render Flow**, Dev **Steering
+> Console** (layer-1 read / layer-1 write rulesets / layer-2 / audited corrections), **Social
+> Mirror** animation, **Action Trace** analysis + graph answers, **Account** panel, plus the
+> earlier Journey Console / Persona Hub / UX Chain / BYOK / Perception toggle. Remaining:
+> Phase 0 build-time Tailwind + routing, journey evidence overlay, motion polish, rebrand copy.
+
 Backend capabilities that have landed ahead of their UI. Each item is a frontend surface to build
 against an existing, tested API. Grouped by tab (spec.md §3).
 

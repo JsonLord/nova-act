@@ -17,6 +17,11 @@ import MindwalkGraphView from './MindwalkGraphView';
 import PersonaHubTab from './PersonaHubTab';
 import UxMentorChain from './UxMentorChain';
 import JourneyConsole from './JourneyConsole';
+import RenderFlow from './RenderFlow';
+import DevSteeringConsole from './DevSteeringConsole';
+import SocialMirror from './SocialMirror';
+import AnalysisGraph from './AnalysisGraph';
+import AccountPanel from './AccountPanel';
 
 export type MainTabId = 'usersync' | 'nova-act' | 'datahub' | 'oasis' | 'graph' | 'dev';
 
@@ -47,20 +52,25 @@ const viewsByTab: Record<MainTabId, SubView[]> = {
     { id: 'mindwalk', label: 'Mindwalk + OmniParser', description: 'Use OmniParser for UI-to-LLM prompts and Mindwalk for navigation memory.' },
   ],
   datahub: [
+    { id: 'render', label: 'Render Flow', description: 'Verify sources, render personas one by one, read their steering.' },
     { id: 'extract', label: 'Extract', description: 'Collect structured records.' },
     { id: 'warehouse', label: 'Warehouse', description: 'Saved artifacts and tab handoff.' },
     { id: 'deploy', label: 'Deploy', description: 'Production export and integrations.' },
   ],
   oasis: [
+    { id: 'mirror', label: 'Social Mirror', description: 'Living network of personas; scrub the animation.' },
     { id: 'network', label: 'Oasis Network', description: 'Community, identity, and auth mesh.' },
     { id: 'trust', label: 'Trust Layer', description: 'HF login is shared across every tab.' },
   ],
   graph: [
+    { id: 'analysis', label: 'Action Trace', description: 'Similarity blend, decisions, and graph answers.' },
     { id: 'live', label: 'Live Graph', description: 'Network topology view.' },
     { id: 'signals', label: 'Signals', description: 'Sorted persona and datahub events.' },
     { id: 'mindwalk', label: 'Mindwalk + OmniParser', description: 'Graph tabs while OmniParser describes UI controls for LLM action.' },
   ],
   dev: [
+    { id: 'steering', label: 'Steering Console', description: 'Layers 1/2, derivation rulesets, and audited corrections.' },
+    { id: 'account', label: 'Account', description: 'Credits, capabilities, and jobs.' },
     { id: 'api', label: 'API Docs', description: 'OpenAPI/Swagger-compatible documentation.' },
     { id: 'events', label: 'Tab Bus', description: 'FastAPI-compatible tab communication contract.' },
     { id: 'status', label: 'Status', description: 'Delivery checklist and runtime health.' },
@@ -111,7 +121,7 @@ const DevApiDocs = () => {
 };
 
 const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
-  const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'console', datahub: 'extract', oasis: 'network', graph: 'live', dev: 'api' });
+  const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering' });
   const activeView = activeViews[props.tab] || viewsByTab[props.tab][0].id;
   const setActiveView = (view: string) => { setActiveViews((prev) => ({ ...prev, [props.tab]: view })); publishTabEvent({ source: 'frontend', target: props.tab, action: 'view.changed', payload: { view } }); };
   const content = useMemo(() => {
@@ -122,10 +132,10 @@ const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
       return <LandingTab onTabChange={() => setActiveView('simulation')} />;
     }
     if (props.tab === 'nova-act') return activeView === 'console' ? <JourneyConsole /> : activeView === 'studio' ? <NovaStudio /> : activeView === 'browser' ? <BrowserAutomationTab /> : activeView === 'qa' ? <QaTestingTab /> : activeView === 'ux-chain' ? <UxMentorChain /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="nova-act" activeView="mindwalk" /> : <UiVerificationTab />;
-    if (props.tab === 'datahub') return activeView === 'extract' ? <DataExtractionTab /> : activeView === 'deploy' ? <DeploymentTab /> : <SimplePanel title="DataHub Warehouse" icon={Database}>Saved records, simulation outputs, and browser traces are sorted here before being published to downstream tabs over <code>/api/tabs/events</code>.</SimplePanel>;
-    if (props.tab === 'oasis') return <SimplePanel title={activeView === 'trust' ? 'Shared HF Trust Layer' : 'Oasis Network'} icon={activeView === 'trust' ? KeyRound : Network}>One Hugging Face login cookie is valid across UserSync, Nova Act, DataHub, Oasis, Graph, and Dev. Backend routes resolve the same user with <code>/api/user</code>.</SimplePanel>;
-    if (props.tab === 'graph') return activeView === 'live' ? <GraphPanel /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="graph" activeView="mindwalk" /> : <SimplePanel title="Graph Signals" icon={GitBranch}>Subview events, persona cohorts, and DataHub artifacts are sorted by source tab and action type for graph exploration.</SimplePanel>;
-    if (props.tab === 'dev') return activeView === 'api' ? <DevApiDocs /> : activeView === 'events' ? <SimplePanel title="Tab Bus Contract" icon={Braces}>Publish tab communication with <code>POST /api/tabs/events</code>. Read the queue with <code>GET /api/tabs/events</code>. The schema is visible in API docs.</SimplePanel> : <SimplePanel title="Runtime Status" icon={Activity}>Frontend build, Express compatibility API, and FastAPI reference backend are included for delivery.</SimplePanel>;
+    if (props.tab === 'datahub') return activeView === 'render' ? <RenderFlow /> : activeView === 'extract' ? <DataExtractionTab /> : activeView === 'deploy' ? <DeploymentTab /> : <SimplePanel title="DataHub Warehouse" icon={Database}>Saved records, simulation outputs, and browser traces are sorted here before being published to downstream tabs over <code>/api/tabs/events</code>.</SimplePanel>;
+    if (props.tab === 'oasis') return activeView === 'mirror' ? <SocialMirror /> : <SimplePanel title={activeView === 'trust' ? 'Shared HF Trust Layer' : 'Oasis Network'} icon={activeView === 'trust' ? KeyRound : Network}>One Hugging Face login cookie is valid across UserSync, Nova Act, DataHub, Oasis, Graph, and Dev. Backend routes resolve the same user with <code>/api/user</code>.</SimplePanel>;
+    if (props.tab === 'graph') return activeView === 'analysis' ? <AnalysisGraph /> : activeView === 'live' ? <GraphPanel /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="graph" activeView="mindwalk" /> : <SimplePanel title="Graph Signals" icon={GitBranch}>Subview events, persona cohorts, and DataHub artifacts are sorted by source tab and action type for graph exploration.</SimplePanel>;
+    if (props.tab === 'dev') return activeView === 'steering' ? <DevSteeringConsole /> : activeView === 'account' ? <AccountPanel /> : activeView === 'api' ? <DevApiDocs /> : activeView === 'events' ? <SimplePanel title="Tab Bus Contract" icon={Braces}>Publish tab communication with <code>POST /api/tabs/events</code>. Read the queue with <code>GET /api/tabs/events</code>. The schema is visible in API docs.</SimplePanel> : <SimplePanel title="Runtime Status" icon={Activity}>Frontend build, Express compatibility API, and FastAPI reference backend are included for delivery.</SimplePanel>;
   }, [activeView, props]);
 
   return <><SubViewSlider views={viewsByTab[props.tab]} activeView={activeView} onViewChange={setActiveView} />{content}</>;
