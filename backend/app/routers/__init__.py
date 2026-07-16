@@ -10,6 +10,7 @@ from backend.app.routers import (
     analysis,
     auth,
     datahub,
+    jobs,
     journeys,
     personas,
     social,
@@ -27,4 +28,5 @@ PACKS = {
     "social": [social.router],
     "uxchain": [uxchain.router],
     "account": [account.router],
+    "jobs": [jobs.router],
 }

@@ -153,6 +153,7 @@ def capabilities():
             "omniparser_configured": bool(settings.omniparser_base_url),
             "engine": settings.usersync_engine,
             "nova_configured": bool(settings.nova_act_api_key),
+            "job_queue": __import__("backend.app.jobs", fromlist=["queue_state"]).queue_state(),
             "note": (
                 "CPU tier: DOM serializer + optical CVD/blur preprocessing only. "
                 "ZeroGPU tier: visual (OmniParser) escalation for canvas/Figma surfaces."

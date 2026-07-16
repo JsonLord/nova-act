@@ -51,7 +51,7 @@ MCP-compatible tool manifest auto-generated from the pack APIs (`usersync.<pack>
 `USERSYNC_PACKS`, `USERSYNC_DATA_DIR` (defaults to `/data` on Spaces), `OAUTH_CLIENT_ID`,
 `OAUTH_CLIENT_SECRET`, `SPACE_HOST`, `UX_MENTOR_BASE_URL` (e.g.
 `https://leon4gr45-ux-mentor.hf.space`), `SCREENSHOT_TO_CODE_BASE_URL` (a deployed
-abi/screenshot-to-code fork), `NOVA_ACT_API_KEY`, `USERSYNC_ENGINE` (open|nova|auto), `USERSYNC_PERCEPTION` (cpu|zerogpu|auto — the CPU/ZeroGPU toggle), `OMNIPARSER_BASE_URL`, `USERSYNC_PUBLIC_BASE_URL`, `FREE_CREDITS`. LLM access is strictly BYOK — no server-side model keys.
+abi/screenshot-to-code fork), `NOVA_ACT_API_KEY`, `USERSYNC_ENGINE` (open|nova|auto), `USERSYNC_PERCEPTION` (cpu|zerogpu|auto — the CPU/ZeroGPU toggle), `OMNIPARSER_BASE_URL`, `USERSYNC_PUBLIC_BASE_URL`, `USERSYNC_MAX_WORKERS` (bounded job/browser concurrency, default 2), `FREE_CREDITS`. LLM access is strictly BYOK — no server-side model keys.
 
 Every response uses the shared envelope: `data`, `artifact_id`, `provenance`, `quota`,
 `warnings`, `next_actions`. Artifacts live under `/data/users/{user}/{pack-folder}/` (spec §9).

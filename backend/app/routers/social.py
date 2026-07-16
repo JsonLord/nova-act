@@ -10,7 +10,6 @@ composes post content; without it the run is seeded-deterministic.
 
 from __future__ import annotations
 
-import threading
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -95,14 +94,16 @@ def create_simulation(
     provenance = {"persona_hub_id": body.persona_hub_id, "runtime": "usersync-social-sim", "seed": body.seed}
     record = save_artifact(user_id, "social_mirror", "simulation", seed, provenance=provenance)
 
-    threading.Thread(
-        target=_run_simulation,
-        args=(user_id, record["artifact_id"], body, graph, llm_call, provenance),
-        daemon=True,
-    ).start()
+    from backend.app.jobs import submit
+
+    job_id = submit(
+        user_id, "social_simulation",
+        lambda: _run_simulation(user_id, record["artifact_id"], body, graph, llm_call, provenance),
+        target_artifact_id=record["artifact_id"],
+    )
 
     return envelope(
-        data=seed,
+        data={**seed, "job_id": job_id},
         artifact_id=record["artifact_id"],
         provenance=provenance,
         quota=meter,

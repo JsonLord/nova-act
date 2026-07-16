@@ -1117,7 +1117,7 @@ waits, frustration abort) — all first-class instead of layered around a closed
   (auto-escalate after N failed steps — itself a nice product signal), and the steering layer's
   guardrails keeping runs bounded either way.
 - **Space limits**: concurrency is the real ceiling (1–2 browser sessions on free CPU) —
-  mitigate with the run queue, session TTL, and station replication; anti-bot walls mitigate
+  mitigate with the bounded job runner (`backend/app/jobs.py`, `USERSYNC_MAX_WORKERS`, default 2 — journeys and simulations queue past the cap; `/api/jobs` reports state), session TTL, and station replication; anti-bot walls mitigate
   via the existing `proxy` config surface.
 
 ## 18. Implementation Order

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     #   "auto"    — zerogpu behavior when OMNIPARSER_BASE_URL is set, else cpu.
     usersync_perception: str = "auto"
 
+    # Bounded background-job concurrency — the browser-session ceiling on a
+    # Space (spec §17.4). Journeys and simulations run through this pool.
+    max_workers: int = 2
+
     # Account defaults
     free_credits: int = 1000
 

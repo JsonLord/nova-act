@@ -80,10 +80,10 @@ def create_journey(
     }
     record = save_artifact(user_id, "journeys", "journey_run", run, provenance=provenance)
 
+    job_id = None
     if can_run:
-        import threading
-
         from backend.app.engines.open_engine import run_journey
+        from backend.app.jobs import submit
         from backend.app.llm import chat_sync
 
         def llm_call(system: str, user: str) -> str:
@@ -96,10 +96,11 @@ def create_journey(
             if run.get("status") == "completed":
                 orchestrate_analysis(user_id, body.goal)
 
-        threading.Thread(target=worker, daemon=True).start()
+        # Bounded pool: queues if browser sessions are saturated (spec §17.4).
+        job_id = submit(user_id, "journey", worker, target_artifact_id=record["artifact_id"])
 
     return envelope(
-        data=run,
+        data={**run, "job_id": job_id},
         artifact_id=record["artifact_id"],
         provenance=record["provenance"],
         quota=meter,

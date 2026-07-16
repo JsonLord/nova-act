@@ -40,6 +40,13 @@ def create_app() -> FastAPI:
         for router in PACKS.get(pack, []):
             app.include_router(router)
 
+    @app.on_event("startup")
+    def _reconcile_jobs() -> None:
+        # Mark jobs left running by a previous process as interrupted.
+        from backend.app.jobs import reconcile_all
+
+        reconcile_all()
+
     @app.get("/healthz", tags=["meta"], operation_id="healthz")
     @app.get("/health", tags=["meta"], operation_id="health", include_in_schema=False)
     def healthz():
