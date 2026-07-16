@@ -50,6 +50,15 @@ def load_artifact(user_id: str, folder: str, artifact_id: str) -> dict[str, Any]
     return json.loads(path.read_text())
 
 
+def save_binary(user_id: str, folder: str, name: str, data: bytes) -> str:
+    """Store a binary blob (e.g. a step screenshot) and return its repo path."""
+    folder_path = _user_root(user_id) / folder
+    folder_path.mkdir(parents=True, exist_ok=True)
+    path = folder_path / name
+    path.write_bytes(data)
+    return str(path.relative_to(get_settings().data_dir))
+
+
 def list_artifacts(user_id: str, folder: str) -> list[dict[str, Any]]:
     folder_path = _user_root(user_id) / folder
     if not folder_path.is_dir():

@@ -266,10 +266,22 @@ def run_journey(
 
     from playwright.sync_api import sync_playwright
 
-    from backend.app.perception import apply_perception, omniparser_to_elements, profile_from_steering
+    from backend.app.perception import (
+        apply_perception,
+        omniparser_to_elements,
+        preprocess_screenshot,
+        profile_from_steering,
+    )
+    from backend.app.storage import save_binary
 
     perception_profile = profile_from_steering(steering)
     look_counts: dict[str, int] = {}  # per-URL looks -> vision-latency widening
+
+    # Per-run interaction heatmap (GRID x GRID over the viewport) accumulated
+    # from the persona-steered action coordinates — feeds §12.2 analysis.
+    HEATMAP_GRID = 12
+    heatmap = [[0] * HEATMAP_GRID for _ in range(HEATMAP_GRID)]
+    run["screenshots"] = []
 
     consecutive_failures = 0
     try:
@@ -292,6 +304,17 @@ def run_journey(
                     if parsed:
                         observation["elements"] = omniparser_to_elements(parsed)
                         coordinate_mode = True
+
+                # Per-step evidence: the screenshot the persona actually saw
+                # (optically degraded — CVD/blur — so it matches their vision).
+                shot_ref = None
+                try:
+                    raw_shot = page.screenshot()
+                    degraded = preprocess_screenshot(raw_shot, perception_profile)
+                    shot_ref = save_binary(user_id, f"journeys/{run_id}", f"step-{step_index}.png", degraded)
+                    run["screenshots"].append(shot_ref)
+                except Exception:
+                    pass
 
                 # The steerable retina: filter what this persona perceives.
                 look_index = look_counts.get(observation["url"], 0)
@@ -363,10 +386,17 @@ def run_journey(
                 except Exception as caught:
                     ok, error = False, str(caught)[:200]
 
+                # Accumulate the interaction heatmap from the action location.
+                if coords["x"] is not None and coords["y"] is not None:
+                    col = min(HEATMAP_GRID - 1, max(0, int(coords["x"] * HEATMAP_GRID)))
+                    row = min(HEATMAP_GRID - 1, max(0, int(coords["y"] * HEATMAP_GRID)))
+                    heatmap[row][col] += 1
+
                 run["steps"].append(
                     {"i": step_index, "think": step["think"], "action": step["action"],
                      "args": step["args"], "url": observation["url"], **coords,
                      "ok": ok,
+                     "screenshot": shot_ref,
                      "perceived": len(perception.perceived),
                      "missed": len(perception.missed),
                      "missed_elements": [
@@ -376,6 +406,7 @@ def run_journey(
                      ],
                      **({"error": error} if error else {})}
                 )
+                run["heatmap"] = heatmap
 
                 if step["action"] == "return":
                     run["result"] = str(step["args"].get("value", ""))

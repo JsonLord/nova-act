@@ -89,11 +89,14 @@ def create_journey(
         def llm_call(system: str, user: str) -> str:
             return chat_sync(text_llm, user, system=system, temperature=0.2)
 
-        threading.Thread(
-            target=run_journey,
-            args=(user_id, record["artifact_id"], run, llm_call, provenance),
-            daemon=True,
-        ).start()
+        def worker() -> None:
+            run_journey(user_id, record["artifact_id"], run, llm_call, provenance)
+            # Auto-close the loop (spec §16.1): when this run completes and ≥2
+            # completed runs share the goal, build the analysis + decisions.
+            if run.get("status") == "completed":
+                orchestrate_analysis(user_id, body.goal)
+
+        threading.Thread(target=worker, daemon=True).start()
 
     return envelope(
         data=run,
@@ -105,6 +108,57 @@ def create_journey(
             {"action": "analyze", "endpoint": "/api/analysis/action-trace"},
             {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
         ],
+    )
+
+
+def _step_traces(run_data: dict) -> list[dict]:
+    """Reduce a run's engine steps to the analysis trace shape."""
+    return [
+        {"action": s.get("action", "wait"), "x": s.get("x") or 0.0,
+         "y": s.get("y") or 0.0, "think": s.get("think", "")}
+        for s in run_data.get("steps", [])
+    ]
+
+
+def orchestrate_analysis(user_id: str, goal: str) -> dict | None:
+    """When ≥2 completed journey runs share a goal, build the Action Trace
+    Graph and decision set automatically (spec §16.1). Returns the graph +
+    decision artifact ids, or None when there is nothing to compare yet."""
+    from backend.app.routers.analysis import build_action_trace, build_decisions
+    from backend.app.storage import list_artifacts
+
+    completed = []
+    for entry in list_artifacts(user_id, "journeys"):
+        record = load_artifact(user_id, "journeys", entry["artifact_id"])
+        data = record["data"] if record else {}
+        if data.get("status") == "completed" and data.get("goal") == goal and data.get("steps"):
+            completed.append(
+                {
+                    "run_id": entry["artifact_id"],
+                    "persona_id": record["provenance"].get("persona_hub_id", ""),
+                    "steps": _step_traces(data),
+                }
+            )
+    if len(completed) < 2:
+        return None
+    graph = build_action_trace(user_id, completed)
+    decisions = build_decisions(user_id, graph["artifact_id"])
+    return {
+        "action_trace_graph_id": graph["artifact_id"],
+        "decision_set_id": decisions["artifact_id"] if decisions else None,
+        "runs_compared": len(completed),
+    }
+
+
+@router.post("/analyze", operation_id="journeys_analyze")
+def analyze_goal(goal: str, user_id: str = Depends(get_user_id)):
+    """Manually trigger the same orchestration for a goal's completed runs."""
+    result = orchestrate_analysis(user_id, goal)
+    if result is None:
+        return envelope(data={"runs_compared": 0}, warnings=["fewer than 2 completed runs for this goal"])
+    return envelope(
+        data=result,
+        next_actions=[{"action": "graph_qa", "endpoint": "/api/graph-research/qa"}],
     )
 
 
@@ -121,3 +175,27 @@ def get_journey(run_id: str, user_id: str = Depends(get_user_id)):
     if record is None:
         raise HTTPException(status_code=404, detail="journey run not found")
     return envelope(data=record["data"], artifact_id=run_id, provenance=record["provenance"])
+
+
+@router.get("/{run_id}/screenshot/{step}", operation_id="journeys_screenshot")
+def get_screenshot(run_id: str, step: int, user_id: str = Depends(get_user_id)):
+    """Serve a per-step screenshot (the optically-degraded image the persona
+    saw). Paths are confined to the caller's own journey folder."""
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    from backend.app.config import get_settings
+
+    record = load_artifact(user_id, "journeys", run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="journey run not found")
+    shots = record["data"].get("screenshots", [])
+    if not 0 <= step < len(shots):
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    path = (get_settings().data_dir / shots[step]).resolve()
+    # Path-traversal guard: must stay under this user's journey folder.
+    root = (get_settings().data_dir / "users" / user_id / "journeys").resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    return FileResponse(path, media_type="image/png")

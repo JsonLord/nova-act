@@ -70,26 +70,24 @@ def thinking_similarity(a: str, b: str) -> float:
     return dot / norm if norm else 0.0
 
 
-@router.post("/action-trace", operation_id="analysis_action_trace")
-def action_trace(
-    body: ActionTraceRequest,
-    user_id: str = Depends(get_user_id),
-    meter: dict = Depends(charge("analysis_api_calls", cost=2)),
-):
-    """Build the Action Trace Graph: run steps as nodes, sequence edges, and
-    pairwise run similarity on both channels (heatmap / thinking)."""
+def build_action_trace(user_id: str, runs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build and persist an Action Trace Graph from run dicts of the shape
+    {run_id, persona_id, steps: [{action, x, y, think}]}. Shared by the API
+    endpoint and the journey-completion orchestrator (spec §16.1)."""
     nodes, edges = [], []
     heatmaps, thoughts = {}, {}
-    for run in body.runs:
-        heatmaps[run.run_id] = _heatmap(run.steps)
-        thoughts[run.run_id] = " ".join(s.think for s in run.steps)
-        for i, step in enumerate(run.steps):
-            node_id = f"{run.run_id}:{i}"
+    for run in runs:
+        steps = [TraceStep(**s) if not isinstance(s, TraceStep) else s for s in run["steps"]]
+        rid = run["run_id"]
+        heatmaps[rid] = _heatmap(steps)
+        thoughts[rid] = " ".join(s.think for s in steps)
+        for i, step in enumerate(steps):
+            node_id = f"{rid}:{i}"
             nodes.append(
                 {
                     "id": node_id,
-                    "run_id": run.run_id,
-                    "persona_id": run.persona_id,
+                    "run_id": rid,
+                    "persona_id": run.get("persona_id", ""),
                     "action": step.action,
                     "x": step.x,
                     "y": step.y,
@@ -97,10 +95,10 @@ def action_trace(
                 }
             )
             if i > 0:
-                edges.append({"source": f"{run.run_id}:{i-1}", "target": node_id, "relation": "next"})
+                edges.append({"source": f"{rid}:{i-1}", "target": node_id, "relation": "next"})
 
     similarities = []
-    run_ids = [r.run_id for r in body.runs]
+    run_ids = [r["run_id"] for r in runs]
     for i, a in enumerate(run_ids):
         for b in run_ids[i + 1 :]:
             similarities.append(
@@ -113,7 +111,7 @@ def action_trace(
             )
 
     graph = {"nodes": nodes, "edges": edges, "similarities": similarities, "variant": "action-trace"}
-    record = save_artifact(
+    return save_artifact(
         user_id,
         "analyses",
         "action_trace_graph",
@@ -124,8 +122,22 @@ def action_trace(
             "thinking_metric": "tf-cosine (embedding-pluggable)",
         },
     )
+
+
+@router.post("/action-trace", operation_id="analysis_action_trace")
+def action_trace(
+    body: ActionTraceRequest,
+    user_id: str = Depends(get_user_id),
+    meter: dict = Depends(charge("analysis_api_calls", cost=2)),
+):
+    """Build the Action Trace Graph: run steps as nodes, sequence edges, and
+    pairwise run similarity on both channels (heatmap / thinking)."""
+    record = build_action_trace(
+        user_id,
+        [{"run_id": r.run_id, "persona_id": r.persona_id, "steps": r.steps} for r in body.runs],
+    )
     return envelope(
-        data=graph,
+        data=record["data"],
         artifact_id=record["artifact_id"],
         provenance=record["provenance"],
         quota=meter,
@@ -140,6 +152,42 @@ class DecisionRequest(BaseModel):
     action_trace_graph_id: str
 
 
+def build_decisions(user_id: str, action_trace_graph_id: str) -> dict[str, Any] | None:
+    """Derive decision candidates from a stored action-trace graph (spec §16)."""
+    record = load_artifact(user_id, "analyses", action_trace_graph_id)
+    if record is None:
+        return None
+    graph = record["data"]
+    findings = _findings_from_similarities(graph.get("similarities", []))
+    result = {"findings": findings, "source_graph": action_trace_graph_id}
+    return save_artifact(user_id, "analyses", "decision_set", result, provenance=record["provenance"])
+
+
+def _findings_from_similarities(similarities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings = []
+    for sim in similarities:
+        acted_alike = sim["heatmap_similarity"] >= 0.6
+        thought_alike = sim["thinking_similarity"] >= 0.6
+        if acted_alike and not thought_alike:
+            findings.append({
+                "kind": "same_path_different_experience", "runs": [sim["a"], sim["b"]],
+                "signal": "Personas took similar paths but experienced them differently — "
+                "inspect think() streams for friction one group absorbs silently.",
+                "decision_candidate": "Targeted copy/affordance fix on the shared path"})
+        elif thought_alike and not acted_alike:
+            findings.append({
+                "kind": "same_goal_different_path", "runs": [sim["a"], sim["b"]],
+                "signal": "Personas reasoned alike but navigated differently — "
+                "the UI offers competing routes to the same intent.",
+                "decision_candidate": "Consolidate navigation; promote the shorter route"})
+        elif not acted_alike and not thought_alike:
+            findings.append({
+                "kind": "diverged", "runs": [sim["a"], sim["b"]],
+                "signal": "Full divergence — segment-specific experience.",
+                "decision_candidate": "Persona-conditional design variant or onboarding"})
+    return findings
+
+
 @router.post("/decisions", operation_id="analysis_decisions")
 def decisions(
     body: DecisionRequest,
@@ -152,39 +200,7 @@ def decisions(
     if record is None:
         raise HTTPException(status_code=404, detail="action trace graph not found")
     graph = record["data"]
-    findings = []
-    for sim in graph.get("similarities", []):
-        acted_alike = sim["heatmap_similarity"] >= 0.6
-        thought_alike = sim["thinking_similarity"] >= 0.6
-        if acted_alike and not thought_alike:
-            findings.append(
-                {
-                    "kind": "same_path_different_experience",
-                    "runs": [sim["a"], sim["b"]],
-                    "signal": "Personas took similar paths but experienced them differently — "
-                    "inspect think() streams for friction one group absorbs silently.",
-                    "decision_candidate": "Targeted copy/affordance fix on the shared path",
-                }
-            )
-        elif thought_alike and not acted_alike:
-            findings.append(
-                {
-                    "kind": "same_goal_different_path",
-                    "runs": [sim["a"], sim["b"]],
-                    "signal": "Personas reasoned alike but navigated differently — "
-                    "the UI offers competing routes to the same intent.",
-                    "decision_candidate": "Consolidate navigation; promote the shorter route",
-                }
-            )
-        elif not acted_alike and not thought_alike:
-            findings.append(
-                {
-                    "kind": "diverged",
-                    "runs": [sim["a"], sim["b"]],
-                    "signal": "Full divergence — segment-specific experience.",
-                    "decision_candidate": "Persona-conditional design variant or onboarding",
-                }
-            )
+    findings = _findings_from_similarities(graph.get("similarities", []))
     result = {"findings": findings, "source_graph": body.action_trace_graph_id}
     saved = save_artifact(user_id, "analyses", "decision_set", result, provenance=record["provenance"])
     return envelope(data=result, artifact_id=saved["artifact_id"], quota=meter)
