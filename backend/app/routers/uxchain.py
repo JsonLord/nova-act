@@ -79,27 +79,36 @@ async def _call_ux_mentor(endpoint: str, payload: dict[str, Any]) -> dict[str, A
         return None
 
 
-async def _call_screenshot_to_code(screenshot_b64: str, instructions: str) -> str | None:
-    """Adapter for a deployed abi/screenshot-to-code instance.
-
-    The upstream repo cannot be vendored into this session (cross-owner);
-    deploy a fork (e.g. JsonLord/screenshot-to-code) and point
-    SCREENSHOT_TO_CODE_BASE_URL at it. Contract: screenshot in, HTML/Tailwind
-    code out.
+async def _call_screenshot_to_code(
+    screenshot_data_url: str, problem_text: str, stack: str = "html_tailwind"
+) -> str | None:
+    """Two-pass generation via the vendored JsonLord/screenshot-to-code fork
+    (adapters/screenshot_to_code.py speaks its real WebSocket protocol):
+    pass 1 recreates the screen as code, pass 2 UPDATES that code to fix the
+    identified UX problem — the optimized code that gets re-rendered.
     """
     base = get_settings().screenshot_to_code_base_url.rstrip("/")
     if not base:
         return None
-    try:
-        async with httpx.AsyncClient(timeout=180) as client:
-            response = await client.post(
-                f"{base}/api/generate-code",
-                json={"image": screenshot_b64, "stack": "html_tailwind", "instructions": instructions},
-            )
-            response.raise_for_status()
-            return response.json().get("code")
-    except httpx.HTTPError:
+    from backend.app.adapters.screenshot_to_code import generate_code
+
+    initial = await generate_code(
+        base,
+        instructions="Recreate this screen exactly.",
+        image_data_url=screenshot_data_url,
+        stack=stack,
+    )
+    if initial is None:
         return None
+    optimized = await generate_code(
+        base,
+        instructions=f"Update the code to fix this UX problem while preserving the style: {problem_text}",
+        image_data_url=screenshot_data_url,
+        stack=stack,
+        generation_type="update",
+        existing_code=initial,
+    )
+    return optimized or initial
 
 
 @router.post("/runs", operation_id="uxchain_run")
@@ -113,8 +122,18 @@ async def create_chain_run(
 
     warnings: list[str] = []
     mode = MODES[body.mode]
+    settings = get_settings()
 
     # ---- Piece 1: screenshot + heatmap -------------------------------------
+    screenshot = body.screenshot_b64
+    if not screenshot and body.target_url and settings.screenshot_to_code_base_url and settings.screenshotone_api_key:
+        from backend.app.adapters.screenshot_to_code import capture_screenshot
+
+        captured = await capture_screenshot(
+            settings.screenshot_to_code_base_url, body.target_url, settings.screenshotone_api_key
+        )
+        if captured:
+            screenshot = captured
     heatmap_result = await _call_ux_mentor(
         mode["engine_endpoint"] if body.mode == "ux_analysis" else "/generate_heatmap/",
         {"figma_ref": body.figma_ref, "url": body.target_url, "prompt": body.prompt},
@@ -126,7 +145,7 @@ async def create_chain_run(
         "kind": "screenshot_heatmap",
         "title": "Screenshot with interaction heatmap",
         "rendered": (heatmap_result or {}).get("heatmap_image")
-        or body.screenshot_b64
+        or screenshot
         or "placeholder://screenshot-with-heatmap",
         "code": None,  # a screenshot has no code representation
         "body": (heatmap_result or {}).get(
@@ -155,7 +174,7 @@ async def create_chain_run(
     # ---- Piece 3: solution (code + re-rendered design) ----------------------
     problem_text = str(problems[0])
     generated_code = await _call_screenshot_to_code(
-        body.screenshot_b64, f"Fix this UX problem, preserve style: {problem_text}"
+        screenshot, problem_text
     )
     iteration = await _call_ux_mentor(
         "/generate_iteration/", {"figma_ref": body.figma_ref, "problem": problem_text}

@@ -23,7 +23,8 @@ class Settings(BaseSettings):
 
     # External engines (all optional; endpoints degrade to simulated output)
     ux_mentor_base_url: str = ""  # e.g. https://leon4gr45-ux-mentor.hf.space
-    screenshot_to_code_base_url: str = ""  # a deployed abi/screenshot-to-code instance
+    screenshot_to_code_base_url: str = ""  # deployed JsonLord/screenshot-to-code
+    screenshotone_api_key: str = ""  # for its POST /api/screenshot live capture
     blablador_api_key: str = ""
     nova_act_api_key: str = ""
 

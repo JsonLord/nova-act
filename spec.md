@@ -908,10 +908,16 @@ Testing results are **agent-consumable products**, not just reports:
 - **Piece 3**: the fix — **screenshot-to-code** (github.com/abi/screenshot-to-code) regenerates
   the screen as code, the code is optimized against the problem, and the result is **re-rendered
   to a screenshot that solves the issue** (ux-mentor `/generate_iteration/` — Design Iteration
-  mode). *Integration note: the upstream repo can't be vendored cross-owner in this environment —
-  deploy a fork (e.g. `JsonLord/screenshot-to-code`) and set `SCREENSHOT_TO_CODE_BASE_URL`;
-  `UX_MENTOR_BASE_URL` points at the existing Space. Unconfigured engines degrade to structured
-  pieces flagged `simulated: true`, keeping the contract testable.*
+  mode). *Integration status: the fork `JsonLord/screenshot-to-code` is vendored into the session
+  and its real protocol is implemented in `backend/app/adapters/screenshot_to_code.py` — the
+  WebSocket `/generate-code` contract (`generatedCodeConfig` stack, `inputMode`, streamed
+  `setCode`/`variantComplete` messages) with a **two-pass flow**: pass 1 recreates the screen from
+  the screenshot (`generationType: create`), pass 2 optimizes that code against the identified
+  problem (`generationType: update` with history). Its `POST /api/screenshot` also captures live
+  target URLs for piece 1 (`SCREENSHOTONE_API_KEY`). Deploy the fork as a Space and set
+  `SCREENSHOT_TO_CODE_BASE_URL`; `UX_MENTOR_BASE_URL` points at the existing ux-mentor Space.
+  Unconfigured engines degrade to structured pieces flagged `simulated: true`, keeping the
+  contract testable (verified by an adapter test against a fake protocol server).*
 
 **Card UX** (implemented in `UserSync/components/UxMentorChain.tsx`, wired as the Nova Act tab's
 "UX Chain" subview): each card has a **switch control** flipping between the **rendered design**
