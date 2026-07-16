@@ -417,11 +417,23 @@ they update. A failed batch keeps deterministic text and is retried selectively
 (`EnrichmentReport.failed_batches`).
 
 **Simulation-side budget** (running the group in Social Mirror, distinct from generating it):
-OASIS costs ~1 LLM call per *activated* agent per timestep. In a 30-minute window at concurrency
-64 and ~5 s/call ≈ 23,000 calls — i.e. ~11 full timesteps with all 2,000 agents active, or 40+
-timesteps activating a 25% subset per step (`EnvAction(activate_agents=…)`). Upstream ships a
-1-million-agent instantiation path (`generate_agents_100w` with `active_threshold`), so agent
-*count* is not the ceiling — per-step LLM calls are.
+OASIS costs ~1 LLM call per *activated* agent per timestep, so
+`wall time ≈ timesteps × ceil(N × activation ÷ concurrency) × latency`. Reference table at
+~5 s/call:
+
+| Scenario | Calls/step | Wall time / step | 10 steps | 30 steps | Total calls (30 steps) |
+| --- | --- | --- | --- | --- | --- |
+| **20 personas**, 100% active, C=16 | 20 | ~10 s | **~2 min** | **~5 min** | 600 |
+| 2,000 personas, 100% active, C=64 | 2,000 | ~160 s | ~27 min | ~80 min | 60,000 |
+| **2,000 personas**, 25% active, C=64 | 500 | ~40 s | **~7 min** | **~20 min** | 15,000 |
+| 2,000 personas, 25% active, C=128 | 500 | ~20 s | ~3.5 min | ~10 min | 15,000 |
+
+Small groups are latency-bound (each step costs ~one call round-trip regardless of size); large
+groups are throughput-bound (provider concurrency/TPM is the lever). Partial activation via
+`EnvAction(activate_agents=…)` is both cheaper and more realistic — real users aren't all online
+per tick, and our personas' activity levels map directly onto activation schedules. Upstream
+ships a 1-million-agent instantiation path (`generate_agents_100w` with `active_threshold`), so
+agent *count* is never the ceiling — per-step LLM calls are.
 
 Still to shape (open): trait synthesis from real CRM/`last30days`/monitoring records (the
 CRM-field → generator-field mapping table), approval/locking of persona updates, business-case

@@ -139,26 +139,36 @@ async def create_chain_run(
         )
         if captured:
             screenshot = captured
-    # /generate_heatmap/ contract: {figma_data, user_prompt} ->
-    # {heatmap_data: {<node_id>: {heatmap, report, suggestions,
-    #  positive_points, drop_off_points, ux_score}}}
+    # ux-mentor contracts (both return {heatmap_data: {analysis_data:
+    # {<frame_id>: {heatmap, report, suggestions, positive_points,
+    #  drop_off_points, ux_score}}}}):
+    #   /generate_heatmap/            {figma_data, user_prompt}   Figma path
+    #   /generate_heatmap_screenshot/ {screenshot, user_prompt}   screenshot path
+    #     (added by integrations/ux-mentor/screenshot_analysis.py — the SAME
+    #      screenshot that feeds screenshot-to-code drives the analysis)
     heatmap_result = None
     if body.figma_data is not None:
         heatmap_result = await _call_ux_mentor(
             "/generate_heatmap/",
             {"figma_data": body.figma_data, "user_prompt": body.prompt},
         )
+    elif screenshot:
+        heatmap_result = await _call_ux_mentor(
+            "/generate_heatmap_screenshot/",
+            {"screenshot": screenshot, "user_prompt": body.prompt},
+        )
     simulated = heatmap_result is None
     if simulated:
-        if body.figma_data is None:
+        if body.figma_data is None and not screenshot:
             warnings.append(
-                "ux-mentor requires figma_data (its engines are Figma-driven); "
-                "screenshot-only chains use the journey heatmap — returning simulated pieces"
+                "no figma_data or screenshot available for ux-mentor analysis; "
+                "returning simulated pieces"
             )
         else:
             warnings.append("ux-mentor not configured or unreachable; returning simulated pieces")
 
-    node_reports = list(((heatmap_result or {}).get("heatmap_data") or {}).values())
+    analysis = ((heatmap_result or {}).get("heatmap_data") or {}).get("analysis_data") or {}
+    node_reports = list(analysis.values())
     first_node = node_reports[0] if node_reports else {}
     piece_1 = {
         "kind": "screenshot_heatmap",
