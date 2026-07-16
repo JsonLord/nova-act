@@ -57,6 +57,11 @@ class ChainRequest(BaseModel):
     target_url: str = ""
     screenshot_b64: str = ""
     figma_ref: str = ""
+    # ux-mentor's engines are Figma-data-driven (verified against its source):
+    # /generate_heatmap/ wants the Figma FILE JSON, /generate_iteration/ wants
+    # a token + design_data {id: <file_id>} it re-fetches from Figma itself.
+    figma_data: dict[str, Any] | None = None
+    figma_token: str = ""
     journey_run_id: str = ""  # reuse a Nova run's screenshot+heatmap as piece 1
     prompt: str = ""
 
@@ -134,28 +139,42 @@ async def create_chain_run(
         )
         if captured:
             screenshot = captured
-    heatmap_result = await _call_ux_mentor(
-        mode["engine_endpoint"] if body.mode == "ux_analysis" else "/generate_heatmap/",
-        {"figma_ref": body.figma_ref, "url": body.target_url, "prompt": body.prompt},
-    )
+    # /generate_heatmap/ contract: {figma_data, user_prompt} ->
+    # {heatmap_data: {<node_id>: {heatmap, report, suggestions,
+    #  positive_points, drop_off_points, ux_score}}}
+    heatmap_result = None
+    if body.figma_data is not None:
+        heatmap_result = await _call_ux_mentor(
+            "/generate_heatmap/",
+            {"figma_data": body.figma_data, "user_prompt": body.prompt},
+        )
     simulated = heatmap_result is None
     if simulated:
-        warnings.append("ux-mentor not configured or unreachable; returning simulated pieces")
+        if body.figma_data is None:
+            warnings.append(
+                "ux-mentor requires figma_data (its engines are Figma-driven); "
+                "screenshot-only chains use the journey heatmap — returning simulated pieces"
+            )
+        else:
+            warnings.append("ux-mentor not configured or unreachable; returning simulated pieces")
+
+    node_reports = list(((heatmap_result or {}).get("heatmap_data") or {}).values())
+    first_node = node_reports[0] if node_reports else {}
     piece_1 = {
         "kind": "screenshot_heatmap",
         "title": "Screenshot with interaction heatmap",
-        "rendered": (heatmap_result or {}).get("heatmap_image")
-        or screenshot
-        or "placeholder://screenshot-with-heatmap",
+        "rendered": screenshot or "placeholder://screenshot-with-heatmap",
         "code": None,  # a screenshot has no code representation
-        "body": (heatmap_result or {}).get(
-            "summary", "Attention concentrates on the hero area; the primary CTA sits below the fold."
-        ),
+        "body": first_node.get("report")
+        or "Attention concentrates on the hero area; the primary CTA sits below the fold.",
+        "heatmap_points": first_node.get("heatmap", []),
+        "ux_score": first_node.get("ux_score"),
         "simulated": simulated,
     }
 
     # ---- Piece 2: UX/UI problem identified ----------------------------------
-    problems = (heatmap_result or {}).get("suggestions") or [
+    dropoff_points = first_node.get("drop_off_points", [])
+    problems = first_node.get("suggestions") or [
         {
             "problem": "Primary call-to-action below the fold on smartphone viewports",
             "evidence": "Heatmap density 0.72 in hero, 0.08 at CTA; 3 of 5 persona runs scrolled past it",
@@ -176,9 +195,21 @@ async def create_chain_run(
     generated_code = await _call_screenshot_to_code(
         screenshot, problem_text
     )
-    iteration = await _call_ux_mentor(
-        "/generate_iteration/", {"figma_ref": body.figma_ref, "problem": problem_text}
-    )
+    # /generate_iteration/ contract: {figma_token, design_data: {id: <file_id>},
+    # dropoff_points} -> {status, data: {original_images, improved_design: {image: b64}}}
+    iteration = None
+    if body.figma_token and body.figma_data is not None:
+        iteration = await _call_ux_mentor(
+            "/generate_iteration/",
+            {
+                "figma_token": body.figma_token,
+                "design_data": body.figma_data,
+                "dropoff_points": dropoff_points or problems,
+            },
+        )
+    improved_image = (
+        ((iteration or {}).get("data") or {}).get("improved_design") or {}
+    ).get("image")
     piece_3 = {
         "kind": "solution",
         "title": "Solution: optimized code, re-rendered",
@@ -187,7 +218,8 @@ async def create_chain_run(
         '<section class="min-h-[60vh] grid place-items-center">\n'
         '  <a class="rounded-xl bg-teal-500 px-8 py-4 text-lg font-bold">Primary CTA — now above the fold</a>\n'
         "</section>",
-        "rendered": (iteration or {}).get("image") or "placeholder://optimized-render",
+        "rendered": (f"data:image/png;base64,{improved_image}" if improved_image else None)
+        or "placeholder://optimized-render",
         "body": "Code regenerated from the screenshot, optimized against the identified problem, "
         "and re-rendered; the new screenshot resolves the issue.",
         "simulated": generated_code is None and iteration is None,
