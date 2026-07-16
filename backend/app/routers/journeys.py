@@ -23,6 +23,7 @@ class JourneyRequest(BaseModel):
     goal: str
     persona_hub_id: str = ""
     persona_index: int = 0
+    vision_mode: bool = False  # decide from annotated screenshots (needs vision slot)
 
 
 @router.post("", operation_id="journeys_create")
@@ -77,6 +78,7 @@ def create_journey(
         "engine": engine.name,
         "engine_status": engine.reason,
         "llm": f"{text_llm.provider}/{text_llm.model}" if text_llm else None,
+        "vision_mode": body.vision_mode,
     }
     record = save_artifact(user_id, "journeys", "journey_run", run, provenance=provenance)
 
@@ -89,8 +91,21 @@ def create_journey(
         def llm_call(system: str, user: str) -> str:
             return chat_sync(text_llm, user, system=system, temperature=0.2)
 
+        # Vision mode: resolve the vision slot; decides from annotated shots.
+        vision_call = None
+        if body.vision_mode:
+            from backend.app.llm_config import resolve_llm
+
+            vision_llm = resolve_llm(request, user_id, "vision")
+            if vision_llm is not None:
+                vision_call = lambda s, u, img: chat_sync(  # noqa: E731
+                    vision_llm, u, system=s, images_b64=[img], temperature=0.2
+                )
+            else:
+                warnings.append("vision_mode set but no BYOK vision model; using DOM text mode")
+
         def worker() -> None:
-            run_journey(user_id, record["artifact_id"], run, llm_call, provenance)
+            run_journey(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
             # Auto-close the loop (spec §16.1): when this run completes and ≥2
             # completed runs share the goal, build the analysis + decisions.
             if run.get("status") == "completed":

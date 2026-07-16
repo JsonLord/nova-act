@@ -1100,8 +1100,7 @@ waits, frustration abort) — all first-class instead of layered around a closed
 3. **Steering actuator**: motor/emotional overrides (jitter, cadence, hesitation, frustration
    abort) in the actuation layer; per-step screenshot + click-coordinate capture feeding the
    §12.2 heatmaps.
-4. **Vision mode (optional flag)**: screenshot + set-of-marks → hosted VLM for visually dense
-   pages where the DOM path underperforms.
+4. ✅ **Vision mode (optional flag)** — implemented: `vision_mode` on `POST /api/journeys` decides each step from a persona-degraded, set-of-marks-annotated screenshot sent to the BYOK vision slot (same action-JSON contract), for visually dense pages where the DOM path underperforms.
 5. **NovaEngine adapter**: wrap the nova_act SDK behind the same protocol; parity test = same
    journey, both engines, identical trace schema; document infra deltas (needs
    `NOVA_ACT_API_KEY`; intended for non-Space deployments or a premium tier).

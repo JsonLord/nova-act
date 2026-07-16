@@ -210,6 +210,34 @@ _CVD_MATRICES = {
 }
 
 
+def annotate_set_of_marks(png_bytes: bytes, elements: list[dict[str, Any]]) -> bytes:
+    """Draw numbered boxes over perceived elements (set-of-marks prompting)
+    so a vision model can refer to them by index — the same index the action
+    JSON uses. No-op without Pillow. Elements carry normalized x/y/w/h."""
+    try:
+        import io
+
+        from PIL import Image, ImageDraw
+    except ImportError:
+        return png_bytes
+
+    image = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    width, height = image.size
+    for element in elements:
+        cx, cy = float(element.get("x", 0.5)) * width, float(element.get("y", 0.5)) * height
+        w = float(element.get("w", 0.05)) * width
+        h = float(element.get("h", 0.03)) * height
+        x1, y1, x2, y2 = cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2
+        draw.rectangle([x1, y1, x2, y2], outline=(0, 200, 180), width=2)
+        label = str(element.get("index", "?"))
+        draw.rectangle([x1, y1 - 14, x1 + 8 + 7 * len(label), y1], fill=(0, 200, 180))
+        draw.text((x1 + 3, y1 - 13), label, fill=(0, 0, 0))
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
 def preprocess_screenshot(png_bytes: bytes, profile: PerceptionProfile) -> bytes:
     """Degrade the screenshot optically per the persona: CVD simulation or
     grayscale, plus acuity blur. No-op (and dependency-free) for the default

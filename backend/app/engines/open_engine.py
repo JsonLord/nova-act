@@ -28,6 +28,7 @@ from backend.app.storage import save_artifact
 
 # One prompt in, model text out — injected so tests can script the model.
 LlmCall = Callable[[str, str], str]  # (system, user) -> text
+VisionCall = Callable[[str, str, str], str]  # (system, user, image_b64) -> text
 
 CHROMIUM_CANDIDATES = [
     "/opt/pw-browsers/chromium/chrome",
@@ -242,8 +243,15 @@ def run_journey(
     run: dict[str, Any],
     llm_call: LlmCall,
     provenance: dict[str, Any],
+    vision_call: "VisionCall | None" = None,
 ) -> None:
-    """Execute the journey in-place, re-persisting the artifact per step."""
+    """Execute the journey in-place, re-persisting the artifact per step.
+
+    When ``vision_call`` is provided, the step decision is made from a
+    set-of-marks-annotated, persona-degraded screenshot (vision mode,
+    spec §17.3 phase 4) instead of the DOM text list — for visually dense
+    pages. The action JSON contract is identical.
+    """
     steering = run.get("steering")
     max_steps = int(_steer(steering, "thinking", "max_steps", default=20))
     observation_delay_s = float(_steer(steering, "observing", "observation_delay_ms", default=300)) / 1000
@@ -267,6 +275,7 @@ def run_journey(
     from playwright.sync_api import sync_playwright
 
     from backend.app.perception import (
+        annotate_set_of_marks,
         apply_perception,
         omniparser_to_elements,
         preprocess_screenshot,
@@ -305,9 +314,16 @@ def run_journey(
                         observation["elements"] = omniparser_to_elements(parsed)
                         coordinate_mode = True
 
+                # The steerable retina: filter what this persona perceives.
+                look_index = look_counts.get(observation["url"], 0)
+                look_counts[observation["url"]] = look_index + 1
+                perception = apply_perception(observation["elements"], perception_profile, look_index)
+                filtered = dict(observation, elements=perception.perceived)
+
                 # Per-step evidence: the screenshot the persona actually saw
                 # (optically degraded — CVD/blur — so it matches their vision).
                 shot_ref = None
+                degraded = None
                 try:
                     raw_shot = page.screenshot()
                     degraded = preprocess_screenshot(raw_shot, perception_profile)
@@ -316,14 +332,23 @@ def run_journey(
                 except Exception:
                     pass
 
-                # The steerable retina: filter what this persona perceives.
-                look_index = look_counts.get(observation["url"], 0)
-                look_counts[observation["url"]] = look_index + 1
-                perception = apply_perception(observation["elements"], perception_profile, look_index)
-                filtered = dict(observation, elements=perception.perceived)
-
                 try:
-                    raw = llm_call(system, observation_text(filtered) + f"\n\nGoal: {run['goal']}")
+                    if vision_call is not None and degraded is not None:
+                        # Vision mode: decide from the annotated screenshot.
+                        import base64
+
+                        marked = annotate_set_of_marks(degraded, perception.perceived)
+                        index_hint = "\n".join(
+                            f"[{e['index']}] {e.get('text', '')}" for e in perception.perceived
+                        )
+                        raw = vision_call(
+                            system,
+                            f"The numbered boxes mark interactive elements:\n{index_hint}"
+                            f"\n\nGoal: {run['goal']}",
+                            base64.b64encode(marked).decode(),
+                        )
+                    else:
+                        raw = llm_call(system, observation_text(filtered) + f"\n\nGoal: {run['goal']}")
                     step = parse_action(raw)
                 except Exception as error:  # model garbage counts as a failed step
                     run["steps"].append({"i": step_index, "think": "", "action": "invalid",
