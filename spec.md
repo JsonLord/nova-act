@@ -233,9 +233,14 @@ Tab 5).
 **Important to conserve.** The Nova Act developer tab for API access.
 
 - We build **our own API endpoint** (the UserSync Gateway + per-pack APIs) and expose it here with
-  docs, keys, and a console.
-- **1000 free credits** budget per account, **measured**: every pack API call is metered against a
-  `quota_category`; the usage ledger is visible here.
+  docs and a console. **API credential = the caller's own Hugging Face token** (natural fit since
+  the backend runs on a Space): `Authorization: Bearer hf_...`, validated via `whoami-v2` with
+  short-lived caching, sha256-hashed in the ledger. No UserSync-issued keys.
+- **1000 free API requests per HF token**, **measured**: every pack API call is metered against a
+  `quota_category`; each token carries its own independent budget (exhausted → 402), browser
+  cookie sessions keep a per-account budget; the usage ledger is visible here. *(Implemented in
+  `backend/app/hf_token_auth.py` + `quota.py`.)* The Nova Act dev token stays a server-side Space
+  secret (backend → Amazon engine) and is never a customer credential.
 - **Company data integrations are a paid service** — entitlement checks gate the DataHub
   connectors.
 - **Account backend: placeholder** for whichever service we adopt (Supabase is the current

@@ -28,6 +28,21 @@ When `UserSync/dist` exists (`npm run build` in `UserSync/`), the same process s
 | uxchain | `/api/ux-chain/{modes,runs}` | 3-piece chain; ux-mentor + screenshot-to-code adapters |
 | account | `/api/account/{credits,usage}` | 1000 free credits, file-backed ledger |
 
+## API authentication: HF tokens, 1000 requests per token
+
+API callers authenticate with their own Hugging Face token — no UserSync-issued keys:
+
+```bash
+curl -H "Authorization: Bearer hf_..." https://<space>/api/personas/generate -d '{...}'
+```
+
+The token is validated against `huggingface.co/api/whoami-v2` (cached 10 min, sha256-hashed in
+the ledger, never stored raw) and **each token carries its own budget of 1000 API requests**
+(`FREE_CREDITS`); exhausted tokens get 402. Browser sessions keep the `hf_user` cookie flow with
+a per-account budget. The Nova Act dev token (`NOVA_ACT_API_KEY`) is unrelated: it is a
+server-side Space secret authenticating the backend to Amazon's engine and is never exposed to
+API callers.
+
 Meta: `/healthz`, `/openapi.json` (stable operation ids), `/api/docs`, and `/mcp` — an
 MCP-compatible tool manifest auto-generated from the pack APIs (`usersync.<pack>.<operation>`).
 

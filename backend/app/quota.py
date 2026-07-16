@@ -36,15 +36,18 @@ def _store(ledger: dict[str, Any]) -> None:
 
 
 def get_user_id(request: Request) -> str:
-    """Resolve the account: HF user cookie when present, else anonymous."""
-    hf_user = request.cookies.get("hf_user")
-    if hf_user:
-        try:
-            parsed = json.loads(hf_user)
-            return str(parsed.get("preferred_username") or parsed.get("name") or "anonymous")
-        except (ValueError, AttributeError):
-            return "anonymous"
-    return "anonymous"
+    """Resolve the account owner (storage paths): HF token bearer, cookie, or anonymous."""
+    from backend.app.hf_token_auth import resolve_identity
+
+    return resolve_identity(request).user_id
+
+
+def get_ledger_key(request: Request) -> str:
+    """Resolve the budget key: per-HF-token for API callers (each token gets
+    its own 1000-request budget), username for browser sessions."""
+    from backend.app.hf_token_auth import resolve_identity
+
+    return resolve_identity(request).ledger_key
 
 
 def account_state(user_id: str) -> dict[str, Any]:
@@ -61,19 +64,22 @@ def account_state(user_id: str) -> dict[str, Any]:
 def charge(category: str, cost: int = 1):
     """Dependency factory: meters the call and rejects when credits run out."""
 
-    def _charge(request: Request, user_id: str = Depends(get_user_id)) -> dict[str, Any]:
+    def _charge(request: Request, ledger_key: str = Depends(get_ledger_key)) -> dict[str, Any]:
         with _lock:
             ledger = _load()
             state = ledger.setdefault(
-                user_id, {"credits": get_settings().free_credits, "usage": {}}
+                ledger_key, {"credits": get_settings().free_credits, "usage": {}}
             )
             if state["credits"] < cost:
-                raise HTTPException(status_code=402, detail="Out of credits")
+                raise HTTPException(
+                    status_code=402,
+                    detail="Out of credits for this token/account (1000 free API requests per HF token)",
+                )
             state["credits"] -= cost
             state["usage"][category] = state["usage"].get(category, 0) + cost
             _store(ledger)
             return {
-                "user_id": user_id,
+                "ledger_key": ledger_key,
                 "category": category,
                 "cost": cost,
                 "credits_remaining": state["credits"],
