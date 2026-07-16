@@ -243,6 +243,17 @@ Tab 5).
   secret (backend → Amazon engine) and is never a customer credential.
 - **Company data integrations are a paid service** — entitlement checks gate the DataHub
   connectors.
+- **Bring Your Own Key (implemented)**: two independent LLM slots per account — a **text-only**
+  slot (persona enrichment, steering auto-fill, graph Q&A, DOM-mode journeys) and a **multimodal**
+  slot (screenshot analysis, vision-mode journeys) — each with its own **provider, model, and
+  token** fields, because the best choice per modality is rarely the same provider. Provider
+  catalog with per-modality defaults: HF Inference Providers (Llama-3.3-70B / Qwen2.5-VL-72B),
+  OpenAI, Anthropic, Gemini, Blablador (free, text-only), custom OpenAI-compatible. Resolution
+  order: per-request headers (`X-LLM-*` / `X-LLM-Vision-*`, nothing stored) → saved config
+  (`/api/account/llm-config`, keys masked on every read, empty key keeps the stored one) →
+  server env fallback. One-token live verification via `/api/account/llm-config/test/{modality}`;
+  provider-agnostic call layer in `backend/app/llm.py` (OpenAI-compatible, Anthropic, Gemini
+  shapes). UI: `ByokSettings.tsx` in the Deployment/Configuration studio.
 - **Account backend: placeholder** for whichever service we adopt (Supabase is the current
   candidate for budgets; Stripe/payment abstraction behind an interface). HF login remains the
   identity anchor; paid UserSync API tokens are issued on top.

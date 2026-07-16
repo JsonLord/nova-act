@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Settings, Shield, Server, FileText, CheckCircle, RefreshCw, Key, Cloud, Eye, Copy } from 'lucide-react';
+import ByokSettings from './ByokSettings';
 
 const DeploymentTab: React.FC = () => {
   const [clientId, setClientId] = useState('02d4b8e2-f72c-4993-9c8a-f88a9c8b7c3d');
@@ -68,6 +69,9 @@ const DeploymentTab: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* BYOK LLM providers: separate text-only and multimodal slots */}
+        <ByokSettings />
 
         {/* AWS IAM Workflow */}
         <div className="space-y-4 pt-4">
