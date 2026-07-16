@@ -11,6 +11,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Which packs this deployment exposes: "all" or csv, e.g. "personas,steering"
     usersync_packs: str = "all"
+    # Artifact backend (spec §10): "sqlite" (WAL DB, durable under concurrent
+    # writes — the default) or "files" (flat JSON). Binary blobs stay on disk.
+    usersync_storage: str = "sqlite"
     # Public URL of this deployment (the HF Space URL, set once known) —
     # reflected in openapi servers and the /mcp manifest so generated clients
     # and MCP tools point at the right host. Empty = relative paths only.

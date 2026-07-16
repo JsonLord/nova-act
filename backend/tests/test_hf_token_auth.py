@@ -63,20 +63,18 @@ def test_each_token_gets_its_own_1000_budget(client):
 
 
 def test_exhausted_token_gets_402(client, tmp_path):
-    import json as jsonlib
+    # Drain the token's budget to zero backend-agnostically, then verify 402.
+    from backend.app.hf_token_auth import _hash_token
+    from backend.app.quota import _store_entry
 
-    ledger_path = tmp_path / "credits_ledger.json"
-    # Pre-drain the token's ledger entry to zero.
-    client.get("/api/account/credits", headers={"Authorization": "Bearer hf_valid_poor"})
-    ledger = jsonlib.loads(ledger_path.read_text())
-    drained_key = next(k for k in ledger if k.startswith("hftok-"))
-    ledger[drained_key]["credits"] = 0
-    ledger_path.write_text(jsonlib.dumps(ledger))
+    headers = {"Authorization": "Bearer hf_valid_poor"}
+    client.get("/api/account/credits", headers=headers)  # initialize the entry
+    _store_entry(f"hftok-{_hash_token('hf_valid_poor')}", {"credits": 0, "usage": {}})
 
     response = client.post(
         "/api/personas/generate",
         json={"company_name": "Acme", "count": 4},
-        headers={"Authorization": "Bearer hf_valid_poor"},
+        headers=headers,
     )
     assert response.status_code == 402
 

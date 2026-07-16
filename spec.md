@@ -724,6 +724,7 @@ Gateway service-registry entry (shape):
 | `oasis/` | Docs/data/assets + **`oasis/generator/` (new)**: adapted OASIS generation with physical/mental/emotional steering, opinions, and `derive_steering()` | Persona Hub API wraps `oasis/generator/`; upstream `camel-oasis` added when the simulation runtime lands |
 | `last30days-skill/` | Full standalone CLI/skill | Wrapped as paid research-drop service in DataHub |
 | `nova-act-agent-skills/` | Skill/packaging metadata | Source for MCP tool wrapping conventions |
+| Persistence | **SQLite (WAL) default** via `USERSYNC_STORAGE=sqlite` — durable under concurrent job-pool writes; per-account credit rows; `files` mode retained. Binary blobs stay on disk. Neo4j/Neptune graph-store adapter is the placeholder next step. |
 | HF login | Real OAuth in Express; cookie-only, no user records | Anchor identity for account layer; move to shared account resolution + tokens/credits |
 
 ## 11. Frontend Overhaul: Dynamic Site Progression & Motion

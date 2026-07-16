@@ -18,21 +18,40 @@ from backend.app.config import get_settings
 _lock = threading.Lock()
 
 
+def _use_sqlite() -> bool:
+    return get_settings().usersync_storage.strip().lower() == "sqlite"
+
+
 def _ledger_path():
     root = get_settings().data_dir
     root.mkdir(parents=True, exist_ok=True)
     return root / "credits_ledger.json"
 
 
-def _load() -> dict[str, Any]:
+def _load_entry(ledger_key: str) -> dict[str, Any] | None:
+    """Load one account's ledger entry (per-row in sqlite mode — no whole-file
+    rewrite hazard under the concurrent job pool)."""
+    if _use_sqlite():
+        from backend.app.storage import load_artifact
+
+        record = load_artifact("__ledger__", "credits", ledger_key)
+        return record["data"] if record else None
     path = _ledger_path()
     if path.is_file():
-        return json.loads(path.read_text())
-    return {}
+        return json.loads(path.read_text()).get(ledger_key)
+    return None
 
 
-def _store(ledger: dict[str, Any]) -> None:
-    _ledger_path().write_text(json.dumps(ledger))
+def _store_entry(ledger_key: str, state: dict[str, Any]) -> None:
+    if _use_sqlite():
+        from backend.app.storage import save_artifact
+
+        save_artifact("__ledger__", "credits", "credit", state, artifact_id=ledger_key)
+        return
+    path = _ledger_path()
+    ledger = json.loads(path.read_text()) if path.is_file() else {}
+    ledger[ledger_key] = state
+    path.write_text(json.dumps(ledger))
 
 
 def get_user_id(request: Request) -> str:
@@ -52,12 +71,10 @@ def get_ledger_key(request: Request) -> str:
 
 def account_state(user_id: str) -> dict[str, Any]:
     with _lock:
-        ledger = _load()
-        state = ledger.get(user_id)
+        state = _load_entry(user_id)
         if state is None:
             state = {"credits": get_settings().free_credits, "usage": {}}
-            ledger[user_id] = state
-            _store(ledger)
+            _store_entry(user_id, state)
         return state
 
 
@@ -66,10 +83,7 @@ def charge(category: str, cost: int = 1):
 
     def _charge(request: Request, ledger_key: str = Depends(get_ledger_key)) -> dict[str, Any]:
         with _lock:
-            ledger = _load()
-            state = ledger.setdefault(
-                ledger_key, {"credits": get_settings().free_credits, "usage": {}}
-            )
+            state = _load_entry(ledger_key) or {"credits": get_settings().free_credits, "usage": {}}
             if state["credits"] < cost:
                 raise HTTPException(
                     status_code=402,
@@ -77,7 +91,7 @@ def charge(category: str, cost: int = 1):
                 )
             state["credits"] -= cost
             state["usage"][category] = state["usage"].get(category, 0) + cost
-            _store(ledger)
+            _store_entry(ledger_key, state)
             return {
                 "ledger_key": ledger_key,
                 "category": category,
