@@ -192,6 +192,48 @@ def records(folder: str = "connectors", user_id: str = Depends(get_user_id)):
     return envelope(data=list_artifacts(user_id, folder))
 
 
+@connectors_router.get("/{connector}/verify", operation_id="connector_verify")
+def connector_verify(
+    connector: Literal["hubspot", "salesforce", "figma", "last30days", "monitoring", "neo4j"],
+    user_id: str = Depends(get_user_id),
+):
+    """Per-connector connection health for the Phase-3 flow diagram's
+    green-lightning boxes. Returns {configured, connected, detail} uniformly,
+    never raising, so the UI can render each source's border state truthfully."""
+    from backend.app.config import get_settings
+
+    settings = get_settings()
+    if connector == "neo4j":
+        from backend.app.graph_store import status
+
+        s = status()
+        return envelope(data={"connector": connector, **{k: s[k] for k in ("configured", "connected", "detail")}})
+    if connector == "figma":
+        # Figma has no server-side stored token; it's per-request. "Configured"
+        # means the connector is available; connection is verified at import.
+        return envelope(data={"connector": connector, "configured": True, "connected": None,
+                              "detail": "per-request token; verified on import"})
+    if connector == "last30days":
+        try:
+            import subprocess
+            import sys
+
+            ok = subprocess.run([sys.executable, "-m", "last30days", "--help"],
+                                capture_output=True, timeout=15).returncode == 0
+        except Exception:
+            ok = False
+        return envelope(data={"connector": connector, "configured": ok, "connected": ok,
+                              "detail": "last30days skill runnable" if ok else "skill not runnable (simulated drops)"})
+    # CRM / monitoring connectors are configured via per-connector env creds.
+    env_key = {"hubspot": "hubspot_token", "salesforce": "salesforce_token",
+               "monitoring": "monitoring_url"}.get(connector, "")
+    configured = bool(getattr(settings, env_key, "")) if env_key else False
+    return envelope(data={"connector": connector, "configured": configured,
+                          "connected": None if configured else False,
+                          "detail": "credentials present; live check at import" if configured
+                          else f"set {env_key.upper()} to enable"})
+
+
 class FigmaImportRequest(BaseModel):
     file_key: str
     token: str  # Figma PAT or OAuth token; used per-request, kept only in the snapshot provenance-free

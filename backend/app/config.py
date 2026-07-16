@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     omniparser_base_url: str = ""  # JsonLord/OmniParser omniparserserver (GPU Space)
     nova_act_api_key: str = ""
 
+    # CRM / monitoring connector credentials (HF Secrets; per-connector).
+    hubspot_token: str = ""
+    salesforce_token: str = ""
+    monitoring_url: str = ""
+
     # Neo4j / Neptune graph store (spec §5/§10) — pulled from HF Secrets.
     # Placeholder connection: wired and status-checkable, tested in-Space later.
     neo4j_uri: str = ""  # e.g. neo4j+s://<id>.databases.neo4j.io

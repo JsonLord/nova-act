@@ -74,16 +74,21 @@ backend-owned, badged.** (`GET /api/personas/{hub}/steering/{index}`.)
 A "Test setup" panel — company / product / business-case / data-source-mode / count / seed —
 clearly editable and **test-case scoped**. Change → Render again → new cohort.
 
-### Backend additions this needs (small; not yet built)
-1. **Streaming generation** — make `POST /api/personas/generate` a background job (reuse the job
-   runner) that appends personas to the hub artifact incrementally, so the reveal is *honest*
-   (frontend polls `GET /api/personas/{hub}/graph` and reveals new nodes) rather than a faked
-   animation over a completed batch.
-2. **Per-connector verify endpoints** — uniform `GET /api/connectors/{name}/verify` →
-   `{configured, connected, detail}` for HubSpot/Salesforce/Figma/last30days/monitoring, so the
-   green-lightning boxes are truthful. (`/api/graph-store/status` already exists for Neo4j.)
-3. **Pipeline-run provenance on graph nodes** — surface `datahub_snapshot_ids` / `research_drop_ids`
-   per node for the live caption and the card (mostly present in provenance already).
+### Backend additions — ✅ built
+1. ✅ **Streaming generation** — `POST /api/personas/generate` with `stream: true` runs a background
+   job that appends personas to the hub graph one by one (each with its read-only
+   `discovered_steering` summary); the frontend polls `GET /api/personas/{hub}/graph` and reveals
+   new nodes as `generated_count` climbs to `target_count`.
+2. ✅ **Per-connector verify** — `GET /api/connectors/{name}/verify` →
+   `{connector, configured, connected, detail}` for hubspot/salesforce/figma/last30days/
+   monitoring/neo4j, driving the green-lightning border states.
+3. ✅ **Node provenance** — each graph node carries `provenance` (unified_traits_id,
+   datahub_snapshot_ids, research_drop_ids) for the live caption and the card.
+
+Developer steering API (both layers): `POST /api/steering/derive` (layer-1 read-only, inline or
+hub ref — the code-runner over derive_steering); layer-2 profiles CRUD `/api/steering/profiles`
+and `POST /api/steering/apply` (declarative override merge, validated against an allow-list);
+journeys accept `steering_overrides` / `steering_profile_id`.
 
 ### Supporting panels (same tab)
 - **Figma import**: `POST /api/connectors/figma/import` (file_key + token) → frame inventory +

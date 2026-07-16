@@ -31,6 +31,9 @@ class GenerateRequest(BaseModel):
     unified_traits_id: str | None = None
     datahub_snapshot_ids: list[str] = Field(default_factory=list)
     research_drop_ids: list[str] = Field(default_factory=list)
+    # Phase 3: stream the reveal — generate in a background job that appends
+    # personas to the hub graph one by one (frontend polls the graph).
+    stream: bool = False
 
 
 def _spec_from_request(body: GenerateRequest, user_id: str) -> GenerationSpec:
@@ -79,23 +82,44 @@ def generate(
     meter: dict = Depends(charge("persona_generation", cost=1)),
 ):
     spec = _spec_from_request(body, user_id)
+    provenance = {
+        "generator": "oasis.generator",
+        "seed": body.seed,
+        "unified_traits_id": body.unified_traits_id,
+        "datahub_snapshot_ids": body.datahub_snapshot_ids,
+        "research_drop_ids": body.research_drop_ids,
+    }
+
+    if body.stream:
+        # Reserve the hub with an empty graph + running status; the job appends
+        # personas one by one (Phase 3 honest reveal).
+        record = save_artifact(
+            user_id, "personas", "persona_hub",
+            {"graph": {"nodes": [], "edges": [], "spec": {}}, "personas": [], "oasis_reddit": [],
+             "generation_status": "running", "generated_count": 0, "target_count": body.count},
+            provenance=provenance,
+        )
+        from backend.app.jobs import submit
+
+        job_id = submit(
+            user_id, "persona_generation",
+            lambda: _generate_streamed(user_id, record["artifact_id"], spec, provenance),
+            target_artifact_id=record["artifact_id"],
+        )
+        return envelope(
+            data={"streaming": True, "target_count": body.count, "job_id": job_id},
+            artifact_id=record["artifact_id"], provenance=provenance, quota=meter,
+            next_actions=[{"action": "poll_graph", "endpoint": f"/api/personas/{record['artifact_id']}/graph"}],
+        )
+
     hub = generate_personas(spec)
-    graph = hub.to_graph_payload()
+    graph = _graph_with_provenance(hub, provenance)
     record = save_artifact(
-        user_id,
-        "personas",
-        "persona_hub",
-        {
-            "graph": graph,
-            "oasis_reddit": [p.to_oasis_reddit_profile() for p in hub.personas],
-            "personas": [p.to_dict() for p in hub.personas],
-        },
-        provenance={
-            "generator": "oasis.generator",
-            "seed": body.seed,
-            "unified_traits_id": body.unified_traits_id,
-            "datahub_snapshot_ids": body.datahub_snapshot_ids,
-        },
+        user_id, "personas", "persona_hub",
+        {"graph": graph, "oasis_reddit": [p.to_oasis_reddit_profile() for p in hub.personas],
+         "personas": [p.to_dict() for p in hub.personas],
+         "generation_status": "completed", "generated_count": len(hub.personas)},
+        provenance=provenance,
     )
     return envelope(
         data={"count": len(hub.personas), "edges": len(hub.edges), "graph": graph},
@@ -107,6 +131,56 @@ def generate(
             {"action": "simulate", "endpoint": "/api/social-mirror/simulations"},
         ],
     )
+
+
+def _graph_with_provenance(hub, provenance: dict) -> dict:
+    """Attach pipeline-run provenance to each node (Phase 3 addition #3) so
+    the UI caption/card can show which data shaped each persona."""
+    graph = hub.to_graph_payload()
+    for node in graph["nodes"]:
+        node["provenance"] = {
+            "unified_traits_id": provenance.get("unified_traits_id"),
+            "datahub_snapshot_ids": provenance.get("datahub_snapshot_ids", []),
+            "research_drop_ids": provenance.get("research_drop_ids", []),
+        }
+    return graph
+
+
+def _generate_streamed(user_id: str, hub_id: str, spec, provenance: dict) -> None:
+    """Generate personas and append them to the hub graph one by one, deriving
+    each persona's discovered steering summary as it lands (real per-persona
+    work), re-persisting so the frontend poll sees the graph grow."""
+    from oasis.generator.steering import derive_steering
+
+    hub = generate_personas(spec)
+    full_graph = _graph_with_provenance(hub, provenance)
+    node_by_index = {n["index"]: n for n in full_graph["nodes"]}
+    data = {
+        "graph": {"nodes": [], "edges": [], "spec": full_graph.get("spec", {})},
+        "personas": [], "oasis_reddit": [],
+        "generation_status": "running", "generated_count": 0, "target_count": len(hub.personas),
+    }
+    for i, persona in enumerate(hub.personas):
+        node = node_by_index[i]
+        # Attach the read-only discovered-steering summary to the node.
+        config = derive_steering(persona).to_dict()
+        node["discovered_steering"] = {
+            "observing": {k: v.get("value") for k, v in config["observing"].items()},
+            "acting_allowed": config["acting"]["allowed_actions"]["value"],
+            "frustration_abort": config["acting"]["frustration_abort_after_failed_steps"]["value"],
+        }
+        data["graph"]["nodes"].append(node)
+        data["personas"].append(persona.to_dict())
+        data["oasis_reddit"].append(persona.to_oasis_reddit_profile())
+        # Reveal edges whose endpoints have both landed.
+        landed = {n["index"] for n in data["graph"]["nodes"]}
+        data["graph"]["edges"] = [
+            e for e in full_graph["edges"] if e["source"] in landed and e["target"] in landed
+        ]
+        data["generated_count"] = i + 1
+        save_artifact(user_id, "personas", "persona_hub", data, provenance=provenance, artifact_id=hub_id)
+    data["generation_status"] = "completed"
+    save_artifact(user_id, "personas", "persona_hub", data, provenance=provenance, artifact_id=hub_id)
 
 
 class EnrichRequest(BaseModel):

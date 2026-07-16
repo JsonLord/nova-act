@@ -24,6 +24,9 @@ class JourneyRequest(BaseModel):
     persona_hub_id: str = ""
     persona_index: int = 0
     vision_mode: bool = False  # decide from annotated screenshots (needs vision slot)
+    # Second-layer (authored) steering — developer overrides for this test case.
+    steering_overrides: dict = {}
+    steering_profile_id: str = ""
 
 
 @router.post("", operation_id="journeys_create")
@@ -48,6 +51,24 @@ def create_journey(
         persona = _rebuild_persona(personas[body.persona_index])
         steering = derive_steering(persona, goal=body.goal).to_dict()
         act_prompt = build_act_prompt(persona, body.goal)
+
+    # Second-layer (authored) steering: merge developer overrides / profile
+    # onto the discovered config so a test case can bend the derived behaviour.
+    overrides = dict(body.steering_overrides)
+    if body.steering_profile_id:
+        profile = load_artifact(user_id, "steering", body.steering_profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="steering profile not found")
+        overrides = {**profile["data"].get("overrides", {}), **overrides}
+    if overrides:
+        from backend.app.steering_apply import OverrideError, apply_overrides
+
+        if steering is None:
+            raise HTTPException(status_code=422, detail="steering_overrides need a persona_hub_id")
+        try:
+            steering = apply_overrides(steering, overrides)
+        except OverrideError as error:
+            raise HTTPException(status_code=422, detail=str(error))
 
     from backend.app.engines import resolve_engine
     from backend.app.llm_config import resolve_llm
