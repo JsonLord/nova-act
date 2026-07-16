@@ -3,6 +3,7 @@ uvicorn[standard]>=0.29
 pydantic-settings>=2.2
 httpx>=0.27
 websockets>=12  # screenshot-to-code /generate-code protocol
+playwright>=1.54  # OpenEngine browser actuation
 # Optional engines — install per station:
 #   nova-act          (journey execution)
 #   camel-oasis       (social mirror runtime)

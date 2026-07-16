@@ -16,6 +16,7 @@ import { getApiSpec, publishTabEvent } from '../services/tabBus';
 import MindwalkGraphView from './MindwalkGraphView';
 import PersonaHubTab from './PersonaHubTab';
 import UxMentorChain from './UxMentorChain';
+import JourneyConsole from './JourneyConsole';
 
 export type MainTabId = 'usersync' | 'nova-act' | 'datahub' | 'oasis' | 'graph' | 'dev';
 
@@ -37,6 +38,7 @@ const viewsByTab: Record<MainTabId, SubView[]> = {
     { id: 'content', label: 'Content Craft', description: 'Generate and evaluate variants.' },
   ],
   'nova-act': [
+    { id: 'console', label: 'Nova Console', description: 'Run persona-steered journeys, watch steps and thinking live.' },
     { id: 'studio', label: 'Nova Studio', description: 'Amazon Nova-inspired command surface.' },
     { id: 'browser', label: 'Browser Act', description: 'Headful web action session.' },
     { id: 'qa', label: 'QA Flows', description: 'Reusable SDK test paths.' },
@@ -109,7 +111,7 @@ const DevApiDocs = () => {
 };
 
 const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
-  const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'studio', datahub: 'extract', oasis: 'network', graph: 'live', dev: 'api' });
+  const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'console', datahub: 'extract', oasis: 'network', graph: 'live', dev: 'api' });
   const activeView = activeViews[props.tab] || viewsByTab[props.tab][0].id;
   const setActiveView = (view: string) => { setActiveViews((prev) => ({ ...prev, [props.tab]: view })); publishTabEvent({ source: 'frontend', target: props.tab, action: 'view.changed', payload: { view } }); };
   const content = useMemo(() => {
@@ -119,7 +121,7 @@ const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
       if (activeView === 'content') return <><ChatPage onBack={() => setActiveView('simulation')} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} /><ContentCraftTab /></>;
       return <LandingTab onTabChange={() => setActiveView('simulation')} />;
     }
-    if (props.tab === 'nova-act') return activeView === 'studio' ? <NovaStudio /> : activeView === 'browser' ? <BrowserAutomationTab /> : activeView === 'qa' ? <QaTestingTab /> : activeView === 'ux-chain' ? <UxMentorChain /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="nova-act" activeView="mindwalk" /> : <UiVerificationTab />;
+    if (props.tab === 'nova-act') return activeView === 'console' ? <JourneyConsole /> : activeView === 'studio' ? <NovaStudio /> : activeView === 'browser' ? <BrowserAutomationTab /> : activeView === 'qa' ? <QaTestingTab /> : activeView === 'ux-chain' ? <UxMentorChain /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="nova-act" activeView="mindwalk" /> : <UiVerificationTab />;
     if (props.tab === 'datahub') return activeView === 'extract' ? <DataExtractionTab /> : activeView === 'deploy' ? <DeploymentTab /> : <SimplePanel title="DataHub Warehouse" icon={Database}>Saved records, simulation outputs, and browser traces are sorted here before being published to downstream tabs over <code>/api/tabs/events</code>.</SimplePanel>;
     if (props.tab === 'oasis') return <SimplePanel title={activeView === 'trust' ? 'Shared HF Trust Layer' : 'Oasis Network'} icon={activeView === 'trust' ? KeyRound : Network}>One Hugging Face login cookie is valid across UserSync, Nova Act, DataHub, Oasis, Graph, and Dev. Backend routes resolve the same user with <code>/api/user</code>.</SimplePanel>;
     if (props.tab === 'graph') return activeView === 'live' ? <GraphPanel /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="graph" activeView="mindwalk" /> : <SimplePanel title="Graph Signals" icon={GitBranch}>Subview events, persona cohorts, and DataHub artifacts are sorted by source tab and action type for graph exploration.</SimplePanel>;

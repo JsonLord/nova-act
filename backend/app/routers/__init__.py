@@ -5,11 +5,22 @@ Deploy all packs (`USERSYNC_PACKS=all`) for the full app, or a subset
 standalone products of spec.md §14.
 """
 
-from backend.app.routers import account, analysis, auth, datahub, journeys, personas, social, uxchain
+from backend.app.routers import (
+    account,
+    analysis,
+    auth,
+    datahub,
+    journeys,
+    personas,
+    social,
+    steering,
+    uxchain,
+)
 
 PACKS = {
     "auth": [auth.router],
     "personas": [personas.router],
+    "steering": [steering.router],
     "datahub": [datahub.router, datahub.connectors_router],
     "journeys": [journeys.router],
     "analysis": [analysis.router, analysis.qa_router],

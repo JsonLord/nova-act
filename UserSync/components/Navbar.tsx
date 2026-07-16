@@ -33,7 +33,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange, onLogin, onLog
               <path d="M12 6L6 20h12L12 6z" className="text-white fill-white" />
             </svg>
           </div>
-          <span className="font-bold text-base tracking-tight text-white hidden xl:inline">Nova Act Suite</span>
+          <span className="font-bold text-base tracking-tight text-white hidden xl:inline">UserSync</span>
         </div>
 
         {/* Tab Links (Tabs 1-10) */}

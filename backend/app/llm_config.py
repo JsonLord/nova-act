@@ -15,7 +15,7 @@ Resolution order per request and modality:
    keyed to the authenticated HF identity. Keys never touch disk, vanish on
    Space restart or TTL expiry, and are always masked on read. Anonymous
    callers cannot store keys (401) — they use per-request headers instead.
-3. Server env fallback (BLABLADOR_API_KEY -> free text slot; no vision default).
+3. No server-side fallback: BYOK is mandatory for LLM features.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from typing import Literal
 from fastapi import Request
 from pydantic import BaseModel, Field
 
-from backend.app.config import get_settings
 
 Modality = Literal["text", "vision"]
 
@@ -65,14 +64,6 @@ PROVIDERS: dict[str, dict] = {
         "token_hint": "AIza...",
         "text_default": "gemini-2.0-flash",
         "vision_default": "gemini-2.0-flash",
-    },
-    "blablador": {
-        "label": "Helmholtz Blablador (free)",
-        "api_style": "openai",
-        "base_url": "https://api.helmholtz-blablador.fz-juelich.de/v1",
-        "token_hint": "glpat-...",
-        "text_default": "alias-fast",
-        "vision_default": None,
     },
     "custom": {
         "label": "Custom (OpenAI-compatible)",
@@ -125,7 +116,7 @@ class ResolvedLlm(BaseModel):
     api_key: str
     base_url: str
     modality: Modality
-    source: str  # "headers" | "saved" | "server_env"
+    source: str  # "headers" | "saved"
 
 
 # Session-only credential store: in-process, TTL-bound, never written to disk.
@@ -172,9 +163,6 @@ def resolve_llm(request: Request, user_id: str, modality: Modality) -> ResolvedL
         config = load_llm_config(user_id)
         stored = getattr(config, modality, None) if config else None
         slot, source = stored, "saved"
-    if slot is None and modality == "text" and get_settings().blablador_api_key:
-        slot = LlmSlot(provider="blablador", api_key=get_settings().blablador_api_key)
-        source = "server_env"
     if slot is None:
         return None
 

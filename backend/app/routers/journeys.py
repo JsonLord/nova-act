@@ -8,7 +8,7 @@ on any deployment.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.app.envelope import envelope
@@ -28,6 +28,7 @@ class JourneyRequest(BaseModel):
 @router.post("", operation_id="journeys_create")
 def create_journey(
     body: JourneyRequest,
+    request: Request,
     user_id: str = Depends(get_user_id),
     meter: dict = Depends(charge("journey_runs", cost=10)),
 ):
@@ -48,40 +49,70 @@ def create_journey(
         act_prompt = build_act_prompt(persona, body.goal)
 
     from backend.app.engines import resolve_engine
+    from backend.app.llm_config import resolve_llm
 
     engine = resolve_engine()
+    text_llm = resolve_llm(request, user_id, "text")
+    can_run = engine.executable and engine.name == "open" and text_llm is not None
+    warnings = []
+    if not engine.executable:
+        warnings.append(f"engine '{engine.name}' not executable: {engine.reason}")
+    elif engine.name == "open" and text_llm is None:
+        warnings.append("no BYOK text model configured (headers or /api/account/llm-config); run queued")
+    elif engine.name == "nova":
+        warnings.append("nova engine execution adapter pending (spec §17.3 phase 5); run queued")
+
     run = {
-        "status": "starting" if engine.executable else "queued",
+        "status": "starting" if can_run else "queued",
         "target_url": body.target_url,
         "goal": body.goal,
         "act_prompt": act_prompt,
         "steering": steering,
-        "executable": engine.executable,
+        "executable": can_run,
         "steps": [],
     }
-    record = save_artifact(
-        user_id,
-        "journeys",
-        "journey_run",
-        run,
-        provenance={
-            "persona_hub_id": body.persona_hub_id,
-            "persona_index": body.persona_index,
-            "engine": engine.name,
-            "engine_status": engine.reason,
-        },
-    )
+    provenance = {
+        "persona_hub_id": body.persona_hub_id,
+        "persona_index": body.persona_index,
+        "engine": engine.name,
+        "engine_status": engine.reason,
+        "llm": f"{text_llm.provider}/{text_llm.model}" if text_llm else None,
+    }
+    record = save_artifact(user_id, "journeys", "journey_run", run, provenance=provenance)
+
+    if can_run:
+        import threading
+
+        from backend.app.engines.open_engine import run_journey
+        from backend.app.llm import chat_sync
+
+        def llm_call(system: str, user: str) -> str:
+            return chat_sync(text_llm, user, system=system, temperature=0.2)
+
+        threading.Thread(
+            target=run_journey,
+            args=(user_id, record["artifact_id"], run, llm_call, provenance),
+            daemon=True,
+        ).start()
+
     return envelope(
         data=run,
         artifact_id=record["artifact_id"],
         provenance=record["provenance"],
         quota=meter,
-        warnings=[] if engine.executable else [f"engine '{engine.name}' not executable: {engine.reason}"],
+        warnings=warnings,
         next_actions=[
             {"action": "analyze", "endpoint": "/api/analysis/action-trace"},
             {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
         ],
     )
+
+
+@router.get("", operation_id="journeys_list")
+def list_journeys(user_id: str = Depends(get_user_id)):
+    from backend.app.storage import list_artifacts
+
+    return envelope(data=list_artifacts(user_id, "journeys"))
 
 
 @router.get("/{run_id}", operation_id="journeys_get")

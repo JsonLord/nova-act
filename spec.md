@@ -248,7 +248,7 @@ Tab 5).
   slot (screenshot analysis, vision-mode journeys) — each with its own **provider, model, and
   token** fields, because the best choice per modality is rarely the same provider. Provider
   catalog with per-modality defaults: HF Inference Providers (Llama-3.3-70B / Qwen2.5-VL-72B),
-  OpenAI, Anthropic, Gemini, Blablador (free, text-only), custom OpenAI-compatible. Resolution
+  OpenAI, Anthropic, Gemini, custom OpenAI-compatible (Blablador was evaluated and excluded). Resolution
   order: per-request headers (`X-LLM-*` / `X-LLM-Vision-*`, nothing stored) → saved config
   (`/api/account/llm-config`, keys masked on every read, empty key keeps the stored one) →
   server env fallback. One-token live verification via `/api/account/llm-config/test/{modality}`;
@@ -984,7 +984,7 @@ that emits `think()` + one action. Neither requires a GPU on our box:
   browser-use/WebVoyager pattern) lets a *text* LLM drive the browser. Calls go to
   **HF Inference Providers** (OpenAI-compatible router, paid by the caller's own HF token —
   which composes perfectly with §Tab-7's HF-token auth: the customer's token funds their own
-  inference), with Blablador (free) and any OpenAI-compatible endpoint as alternates.
+  inference) or any OpenAI-compatible endpoint.
   Optional **vision mode** sends the screenshot (set-of-marks annotated) to a hosted VLM
   (e.g. Qwen2.5-VL via Inference Providers) — still zero GPU on our Space.
 
@@ -1023,10 +1023,10 @@ waits, frustration abort) — all first-class instead of layered around a closed
 1. **Freeze the contract**: `backend/app/engines/` with `EngineProtocol`, the action vocabulary,
    and the step/trace schema (extracted from §7); `USERSYNC_ENGINE` config + engine tag in every
    journey run's provenance.
-2. **OpenEngine v1 (text mode)**: Playwright session manager (session pool with TTL + queue,
+2. ✅ **OpenEngine v1 (text mode)** — implemented in `backend/app/engines/open_engine.py`: Playwright session manager (session pool with TTL + queue,
    sized to Space hardware), DOM/AX observation serializer, prompt template embedding the
    steering blocks, LLM adapter (HF Inference Providers with caller-token pass-through;
-   Blablador; OpenAI-compatible), JSON action parsing with jsonschema validation and one
+   OpenAI-compatible providers), JSON action parsing with jsonschema validation and one
    redirect-on-invalid retry (mirrors `AgentRedirectError`).
 3. **Steering actuator**: motor/emotional overrides (jitter, cadence, hesitation, frustration
    abort) in the actuation layer; per-step screenshot + click-coordinate capture feeding the

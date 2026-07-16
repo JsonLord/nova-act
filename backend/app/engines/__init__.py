@@ -39,8 +39,12 @@ def _open_available() -> tuple[bool, str]:
     try:
         import playwright  # noqa: F401
     except ImportError:
-        return False, "playwright not installed (OpenEngine lands in spec §17.3 phase 2)"
-    return False, "OpenEngine not yet implemented (spec §17.3 phase 2)"
+        return False, "playwright not installed"
+    from backend.app.engines.open_engine import find_chromium
+
+    if find_chromium() is None:
+        return False, "no Chromium binary found (playwright install chromium)"
+    return True, "OpenEngine ready (playwright + chromium; needs a BYOK text model per run)"
 
 
 def resolve_engine() -> EngineChoice:

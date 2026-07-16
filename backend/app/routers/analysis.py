@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.app.envelope import envelope
@@ -199,18 +199,59 @@ class GraphQaRequest(BaseModel):
 
 
 @qa_router.post("/qa", operation_id="graph_qa")
-def graph_qa(
+async def graph_qa(
     body: GraphQaRequest,
+    request: Request,
     user_id: str = Depends(get_user_id),
     meter: dict = Depends(charge("visualization_api_calls", cost=1)),
 ):
-    """LLM Q&A over a graph (spec.md §12.3). Without an LLM configured this
-    returns deterministic template Q&A grounded in the stored graph, keeping
-    the contract (grounded_node_ids, stale/kept diff) intact."""
+    """LLM Q&A over a graph (spec.md §12.3): questions AND answers generated
+    from the graph context via the caller's BYOK text slot, regenerated on
+    graph updates. Without an LLM this degrades to deterministic template
+    Q&A, keeping the contract (grounded_node_ids, stale/kept) intact."""
     record = load_artifact(user_id, "analyses", body.graph_id)
     if record is None:
         raise HTTPException(status_code=404, detail="graph not found")
     graph = record["data"]
+
+    from backend.app.llm_config import resolve_llm
+
+    text_llm = resolve_llm(request, user_id, "text")
+    if text_llm is not None:
+        import json as jsonlib
+
+        from backend.app.llm import LlmCallError, chat
+
+        context = jsonlib.dumps(
+            {k: graph.get(k) for k in ("variant", "nodes", "edges", "similarities")}
+        )[:12000]
+        previous = jsonlib.dumps(body.previous_qa)[:4000]
+        try:
+            raw = await chat(
+                text_llm,
+                "You explain analysis graphs. Given this graph JSON, generate 3-5 insightful "
+                "question+answer pairs a UX researcher would ask. Ground every answer in node "
+                "ids. Keep still-valid previous questions, regenerate stale ones.\n"
+                f"Graph:\n{context}\nPrevious Q&A:\n{previous}\n\n"
+                'Respond with ONLY a JSON array: [{"question": "...", "answer": "...", '
+                '"grounded_node_ids": ["..."], "stale": false}]',
+                temperature=0.3,
+            )
+            match = __import__("re").search(r"\[.*\]", raw, __import__("re").DOTALL)
+            qa = jsonlib.loads(match.group(0)) if match else []
+            if qa:
+                return envelope(
+                    data={
+                        "qa": qa,
+                        "regenerated": [item.get("question") for item in qa],
+                        "kept": [item.get("question") for item in body.previous_qa],
+                        "llm": f"{text_llm.provider}/{text_llm.model}",
+                    },
+                    artifact_id=f"{body.graph_id}:qa:v{body.graph_version}",
+                    quota=meter,
+                )
+        except (LlmCallError, ValueError):
+            pass  # fall through to deterministic Q&A
     nodes = graph.get("nodes", [])
     sims = graph.get("similarities", [])
     qa = [

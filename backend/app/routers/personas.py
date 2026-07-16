@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.app.envelope import envelope
@@ -106,6 +106,64 @@ def generate(
             {"action": "derive_steering", "endpoint": f"/api/personas/{record['artifact_id']}/steering/0"},
             {"action": "simulate", "endpoint": "/api/social-mirror/simulations"},
         ],
+    )
+
+
+class EnrichRequest(BaseModel):
+    batch_size: int = Field(default=10, ge=1, le=50)
+    concurrency: int = Field(default=8, ge=1, le=32)
+
+
+@router.post("/{hub_id}/enrich", operation_id="personas_enrich")
+def enrich_hub(
+    hub_id: str,
+    body: EnrichRequest,
+    request: Request,
+    user_id: str = Depends(get_user_id),
+    meter: dict = Depends(charge("persona_enrichment", cost=5)),
+):
+    """LLM-enrich persona text and opinion statements via the caller's BYOK
+    text slot (batched, parallel — 2,000 personas ≈ 200 calls, spec §5.1)."""
+    from backend.app.llm import chat_sync
+    from backend.app.llm_config import resolve_llm
+    from oasis.generator.enrichment import enrich_personas
+
+    record = load_artifact(user_id, "personas", hub_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Persona hub not found")
+    text_llm = resolve_llm(request, user_id, "text")
+    if text_llm is None:
+        raise HTTPException(
+            status_code=422,
+            detail="No BYOK text model configured (X-LLM-* headers or /api/account/llm-config)",
+        )
+
+    personas = [_rebuild_persona(raw) for raw in record["data"]["personas"]]
+    report = enrich_personas(
+        personas,
+        llm=lambda prompt: chat_sync(text_llm, prompt, temperature=0.8),
+        batch_size=body.batch_size,
+        concurrency=body.concurrency,
+    )
+    # Persist enriched text back into the hub artifact (graph nodes included).
+    record["data"]["personas"] = [p.to_dict() for p in personas]
+    record["data"]["oasis_reddit"] = [p.to_oasis_reddit_profile() for p in personas]
+    for node, persona in zip(record["data"]["graph"]["nodes"], personas):
+        node["profile"] = persona.to_dict()
+    save_artifact(
+        user_id, "personas", "persona_hub", record["data"],
+        provenance={**record["provenance"], "enriched_by": f"{text_llm.provider}/{text_llm.model}"},
+        artifact_id=hub_id,
+    )
+    return envelope(
+        data={
+            "llm_calls": report.llm_calls,
+            "enriched": report.enriched,
+            "failed_batches": report.failed_batches,
+            "llm": f"{text_llm.provider}/{text_llm.model}",
+        },
+        artifact_id=hub_id,
+        quota=meter,
     )
 
 

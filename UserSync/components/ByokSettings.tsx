@@ -134,7 +134,7 @@ const SlotCard: React.FC<{
 
 const ByokSettings: React.FC = () => {
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
-  const [textSlot, setTextSlot] = useState<SlotState>({ ...EMPTY_SLOT, provider: 'blablador' });
+  const [textSlot, setTextSlot] = useState<SlotState>({ ...EMPTY_SLOT });
   const [visionSlot, setVisionSlot] = useState<SlotState>({ ...EMPTY_SLOT });
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState('');

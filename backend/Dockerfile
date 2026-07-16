@@ -10,7 +10,8 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 COPY backend/requirements.txt backend/requirements.txt
-RUN pip install --no-cache-dir -r backend/requirements.txt
+RUN pip install --no-cache-dir -r backend/requirements.txt \
+ && playwright install --with-deps chromium
 COPY backend/ backend/
 COPY oasis/generator/ oasis/generator/
 COPY --from=frontend /build/dist UserSync/dist
