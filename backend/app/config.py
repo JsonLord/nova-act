@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     blablador_api_key: str = ""
     nova_act_api_key: str = ""
 
+    # Journey engine: "open" (CPU-Space engine), "nova" (Amazon fallback), or
+    # "auto" (nova when configured, else open) — spec.md §17.
+    usersync_engine: str = "auto"
+
     # Account defaults
     free_credits: int = 1000
 

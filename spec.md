@@ -952,7 +952,95 @@ Iteration**), re-running the chain per mode. The chain also runs per **Experienc
 limitation profile), so the same screen yields per-persona chains — content testing feeds the
 same chain with content variants instead of URLs.
 
-## 17. Implementation Order
+## 17. Engine Replacement Plan: Open Engine on CPU Spaces, Nova as Fallback
+
+**Goal**: journeys must run on a **CPU Hugging Face Space** with no Amazon dependency. The
+Amazon engine (Nova Act) becomes a **fallback tier** for later deployments outside HF Spaces.
+The product's differentiators — persona steering, thinking capture, analysis — live in *our*
+layer, not in the engine, so the engine must be swappable.
+
+### 17.1 Why this works on CPU
+
+The Nova loop (§7) needs two things per step: an **observation** of the page and a **model**
+that emits `think()` + one action. Neither requires a GPU on our box:
+
+- **Browser actuation is CPU-cheap**: headless Playwright/Chromium (already a repo dependency,
+  and pre-installable in a Docker Space) runs fine on the free 2-vCPU/16GB tier —
+  ~0.5–1 GB per browser session, so 1–2 concurrent sessions per free Space, more on upgraded
+  hardware or by replicating the journey station (§9 makes stations replicable by design).
+- **The model is a hosted API, not local inference**: text-first observation
+  (DOM/accessibility-tree serialization with numbered interactive elements — the
+  browser-use/WebVoyager pattern) lets a *text* LLM drive the browser. Calls go to
+  **HF Inference Providers** (OpenAI-compatible router, paid by the caller's own HF token —
+  which composes perfectly with §Tab-7's HF-token auth: the customer's token funds their own
+  inference), with Blablador (free) and any OpenAI-compatible endpoint as alternates.
+  Optional **vision mode** sends the screenshot (set-of-marks annotated) to a hosted VLM
+  (e.g. Qwen2.5-VL via Inference Providers) — still zero GPU on our Space.
+
+### 17.2 The engine abstraction
+
+One protocol, two implementations, selected by `USERSYNC_ENGINE=open|nova|auto`
+(auto = nova when `NOVA_ACT_API_KEY` is set and the SDK importable, else open):
+
+```text
+EngineProtocol
+  start(session: viewport, user_agent, cdp_emulation, proxy)   # ObservingConfig binds here
+  act(prompt, steering) -> ActResult(steps=[{think, action, args, screenshot, heatmap_xy}])
+  events -> streamed step/think messages (the run-trace UI contract)
+
+OpenEngine (default; CPU Space)          NovaEngine (fallback)
+  Playwright session                       nova_act SDK (NovaAct/Workflow)
+  DOM/AX-tree observation (+vision opt.)   Nova's own vision observation
+  hosted LLM -> JSON {think, action}       AWL program -> interpreter
+  jsonschema-validated actuation           SDK actuation
+```
+
+**Contract freeze — the compatibility keystone**: both engines emit the *same* closed action
+vocabulary (`agentClick`, `agentType`, `agentScroll`, `agentHover`, `goToUrl`, `wait`,
+`return`, `throw`) and the same trace schema (one `think` + one action per step). Everything
+downstream — steering configs (`allowed_actions`), action-trace graphs, thinking-similarity
+analysis, the UX chain — is keyed to that vocabulary and works unchanged on either engine.
+
+**Steering lands deeper in OpenEngine than Nova allows**: observing (viewport, CDP
+color-vision/throttling, observation delays, re-reads), thinking (self-description block +
+think-restyle in the system prompt, think-depth), acting (allowed-action filtering *before*
+the model sees the tools, typing cadence and pointer jitter in our own actuator, hesitation
+waits, frustration abort) — all first-class instead of layered around a closed SDK.
+
+### 17.3 Implementation phases
+
+1. **Freeze the contract**: `backend/app/engines/` with `EngineProtocol`, the action vocabulary,
+   and the step/trace schema (extracted from §7); `USERSYNC_ENGINE` config + engine tag in every
+   journey run's provenance.
+2. **OpenEngine v1 (text mode)**: Playwright session manager (session pool with TTL + queue,
+   sized to Space hardware), DOM/AX observation serializer, prompt template embedding the
+   steering blocks, LLM adapter (HF Inference Providers with caller-token pass-through;
+   Blablador; OpenAI-compatible), JSON action parsing with jsonschema validation and one
+   redirect-on-invalid retry (mirrors `AgentRedirectError`).
+3. **Steering actuator**: motor/emotional overrides (jitter, cadence, hesitation, frustration
+   abort) in the actuation layer; per-step screenshot + click-coordinate capture feeding the
+   §12.2 heatmaps.
+4. **Vision mode (optional flag)**: screenshot + set-of-marks → hosted VLM for visually dense
+   pages where the DOM path underperforms.
+5. **NovaEngine adapter**: wrap the nova_act SDK behind the same protocol; parity test = same
+   journey, both engines, identical trace schema; document infra deltas (needs
+   `NOVA_ACT_API_KEY`; intended for non-Space deployments or a premium tier).
+6. **Cutover**: `/api/journeys` executes via `resolve_engine()`; free tier defaults to
+   OpenEngine on the Space, Nova becomes the premium/self-hosted path.
+
+### 17.4 Expectations & risks
+
+- **Budget per step (text mode)**: 1–3k tokens, 2–6 s via hosted inference → a 20-step journey
+  ≈ 1–2 min, comfortably inside a Space request lifecycle with the session pool.
+- **Quality gap**: Nova is trained for UI actuation; the open loop will lag on visually complex
+  or canvas-heavy pages. Mitigations: vision mode (phase 4), Nova fallback per journey
+  (auto-escalate after N failed steps — itself a nice product signal), and the steering layer's
+  guardrails keeping runs bounded either way.
+- **Space limits**: concurrency is the real ceiling (1–2 browser sessions on free CPU) —
+  mitigate with the run queue, session TTL, and station replication; anti-bot walls mitigate
+  via the existing `proxy` config surface.
+
+## 18. Implementation Order
 
 1. Rebrand Tab 1 to UserSync (brand mark, titles, `branding.ts` promise lines, token file) and lay
    the motion foundation (§11 items 1–2: build-time Tailwind, motion library, view transitions).

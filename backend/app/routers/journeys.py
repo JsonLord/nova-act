@@ -11,7 +11,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.app.config import get_settings
 from backend.app.envelope import envelope
 from backend.app.quota import charge, get_user_id
 from backend.app.storage import load_artifact, save_artifact
@@ -48,19 +47,16 @@ def create_journey(
         steering = derive_steering(persona, goal=body.goal).to_dict()
         act_prompt = build_act_prompt(persona, body.goal)
 
-    executable = bool(get_settings().nova_act_api_key)
-    try:
-        import nova_act  # noqa: F401
-    except ImportError:
-        executable = False
+    from backend.app.engines import resolve_engine
 
+    engine = resolve_engine()
     run = {
-        "status": "queued" if not executable else "starting",
+        "status": "starting" if engine.executable else "queued",
         "target_url": body.target_url,
         "goal": body.goal,
         "act_prompt": act_prompt,
         "steering": steering,
-        "executable": executable,
+        "executable": engine.executable,
         "steps": [],
     }
     record = save_artifact(
@@ -71,7 +67,8 @@ def create_journey(
         provenance={
             "persona_hub_id": body.persona_hub_id,
             "persona_index": body.persona_index,
-            "engine": "nova_act" if executable else "queued (no NOVA_ACT_API_KEY)",
+            "engine": engine.name,
+            "engine_status": engine.reason,
         },
     )
     return envelope(
@@ -79,7 +76,7 @@ def create_journey(
         artifact_id=record["artifact_id"],
         provenance=record["provenance"],
         quota=meter,
-        warnings=[] if executable else ["nova_act not configured; run stored as queued"],
+        warnings=[] if engine.executable else [f"engine '{engine.name}' not executable: {engine.reason}"],
         next_actions=[
             {"action": "analyze", "endpoint": "/api/analysis/action-trace"},
             {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
