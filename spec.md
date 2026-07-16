@@ -554,7 +554,7 @@ is vision-driven). This enables three workflow families:
 3. **Design import as journey context**: frame names/flows seed journey definitions; design
    comments attach as steering context.
 
-Figma is implemented as a **DataHub connector** (`/api/figma` under the design-review pack) with
+Figma is implemented as a **DataHub connector** (`POST /api/connectors/figma/import` — real REST fetch of the frame inventory + render URLs in `backend/app/connectors/figma.py`; token used per-request, never persisted) with
 the same normalization/provenance rules as CRM connectors.
 
 ---

@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.app.envelope import envelope
@@ -152,6 +152,55 @@ def _affinity_distribution(center: int) -> dict[str, float]:
 @router.get("/records", operation_id="datahub_records")
 def records(folder: str = "connectors", user_id: str = Depends(get_user_id)):
     return envelope(data=list_artifacts(user_id, folder))
+
+
+class FigmaImportRequest(BaseModel):
+    file_key: str
+    token: str  # Figma PAT or OAuth token; used per-request, kept only in the snapshot provenance-free
+    render_frames: bool = False
+
+
+@connectors_router.post("/figma/import", operation_id="connector_figma_import")
+def figma_import(
+    body: FigmaImportRequest,
+    user_id: str = Depends(get_user_id),
+    meter: dict = Depends(charge("connector_import", cost=5)),
+):
+    """Real Figma import: fetch the file's frame inventory (and optional
+    render URLs) and store a normalized design snapshot for the ux-chain and
+    DataHub. The token is used for the live call only, never persisted."""
+    from backend.app.connectors.figma import (
+        FigmaError,
+        fetch_file,
+        fetch_frame_images,
+        normalize_design_snapshot,
+    )
+
+    try:
+        file_json = fetch_file(body.file_key, body.token)
+        snapshot = normalize_design_snapshot(body.file_key, file_json)
+        if body.render_frames and snapshot["frames"]:
+            node_ids = [f["id"] for f in snapshot["frames"][:20] if f["id"]]
+            images = fetch_frame_images(body.file_key, node_ids, body.token)
+            for frame in snapshot["frames"]:
+                frame["render_url"] = images.get(frame["id"])
+    except FigmaError as error:
+        raise HTTPException(status_code=502, detail=str(error))
+
+    record = save_artifact(
+        user_id, "graph_snapshots", "figma_snapshot", snapshot,
+        provenance={"connector": "figma", "file_key": body.file_key, "paid_service": True},
+    )
+    return envelope(
+        data={"connector": "figma", "file": snapshot["name"], "frames": snapshot["frame_count"]},
+        artifact_id=record["artifact_id"],
+        provenance=record["provenance"],
+        quota=meter,
+        next_actions=[
+            {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
+            {"action": "journey", "endpoint": "/api/journeys"},
+        ],
+    )
 
 
 @connectors_router.post("/{connector}/import", operation_id="connector_import")

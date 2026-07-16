@@ -10,6 +10,7 @@ Standalone:    USERSYNC_PACKS=personas uvicorn backend.app.main:app
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,6 +19,15 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.app.config import get_settings
 from backend.app.routers import PACKS
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Mark jobs left running by a previous process as interrupted.
+    from backend.app.jobs import reconcile_all
+
+    reconcile_all()
+    yield
 
 
 def create_app() -> FastAPI:
@@ -31,6 +41,7 @@ def create_app() -> FastAPI:
         f"Enabled packs: {', '.join(enabled)}.",
         openapi_url="/openapi.json",
         docs_url="/api/docs",
+        lifespan=_lifespan,
     )
     app.add_middleware(
         CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
@@ -39,13 +50,6 @@ def create_app() -> FastAPI:
     for pack in enabled:
         for router in PACKS.get(pack, []):
             app.include_router(router)
-
-    @app.on_event("startup")
-    def _reconcile_jobs() -> None:
-        # Mark jobs left running by a previous process as interrupted.
-        from backend.app.jobs import reconcile_all
-
-        reconcile_all()
 
     @app.get("/healthz", tags=["meta"], operation_id="healthz")
     @app.get("/health", tags=["meta"], operation_id="health", include_in_schema=False)
