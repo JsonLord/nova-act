@@ -1107,7 +1107,22 @@ waits, frustration abort) — all first-class instead of layered around a closed
    abort) in the actuation layer; per-step screenshot + click-coordinate capture feeding the
    §12.2 heatmaps.
 4. ✅ **Vision mode (optional flag)** — implemented: `vision_mode` on `POST /api/journeys` decides each step from a persona-degraded, set-of-marks-annotated screenshot sent to the BYOK vision slot (same action-JSON contract), for visually dense pages where the DOM path underperforms.
-5. **NovaEngine adapter** *(planned — item 3)*: wrap the `nova_act` SDK behind the same
+5. ✅ **NovaEngine adapter** *(item 3 — keyless by default)*: implemented in
+   `backend/app/engines/nova_engine.py`. **What the Nova service is**: a single hosted call
+   (`invoke_act_step` → `nova-act.us-east-1.amazonaws.com`) that turns a screenshot + prompt +
+   tool schema into the next UI action — i.e. Amazon's *trained web-action model*. The API key
+   buys only that model; the SDK's actuator, AWL interpreter, and loop are local and keyless.
+   Because OpenEngine already replaced exactly that model-step boundary with a BYOK model, the
+   **keyless "nova-compat" tier is the default**: `USERSYNC_ENGINE=nova` with no key runs the
+   BYOK observe→think→act loop (provenance `nova-compat (keyless BYOK)`), and `auto` never
+   selects Amazon unless a key is present. The Amazon key is a pure **upgrade** — when
+   `NOVA_ACT_API_KEY` + the SDK are present, `_run_with_sdk` drives the real `NovaAct` so steps
+   use Amazon's trained model (premium tier, best on visually complex UIs), degrading to the
+   keyless loop if the SDK call fails. Both tiers persist the identical journey artifact schema,
+   so all downstream analysis is engine-blind. **Nothing in the product requires the Amazon key.**
+   Original wrap-the-SDK plan retained below for the premium path:
+
+   Wrap the `nova_act` SDK behind the same
    `EngineProtocol` so `USERSYNC_ENGINE=nova` executes instead of queueing. Concrete plan:
    - A `backend/app/engines/nova_engine.py` with `run_journey_nova(user_id, run_id, run,
      provenance)` mirroring the open engine's signature and re-persisting the same artifact

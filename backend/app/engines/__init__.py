@@ -48,18 +48,27 @@ def _open_available() -> tuple[bool, str]:
 
 
 def resolve_engine() -> EngineChoice:
-    """Pick the journey engine per USERSYNC_ENGINE=open|nova|auto (§17.2)."""
+    """Pick the journey engine per USERSYNC_ENGINE=open|nova|auto (§17.2).
+
+    Keyless is the capable default: `open` and keyless `nova` (nova-compat)
+    both run the BYOK observe→think→act loop — no Amazon key required. The
+    Amazon key only upgrades `nova` to the premium trained-model path.
+    """
     preference = get_settings().usersync_engine.lower()
-    nova_ok, nova_reason = _nova_available()
+    nova_key_ok, nova_reason = _nova_available()
     open_ok, open_reason = _open_available()
 
     if preference == "nova":
-        return EngineChoice("nova", nova_ok, nova_reason)
+        # Executable whenever the BYOK loop can run (keyless nova-compat);
+        # the key merely upgrades the tier, it is not required.
+        if nova_key_ok:
+            return EngineChoice("nova", True, f"premium (Amazon model): {nova_reason}")
+        return EngineChoice("nova", open_ok, f"keyless nova-compat (BYOK): {open_reason}")
     if preference == "open":
         return EngineChoice("open", open_ok, open_reason)
-    # auto: prefer nova when configured (fallback tier), else the open engine.
-    if nova_ok:
-        return EngineChoice("nova", True, nova_reason)
+    # auto: premium nova only when a key is present; otherwise keyless open.
+    if nova_key_ok:
+        return EngineChoice("nova", True, f"premium (Amazon model): {nova_reason}")
     if open_ok:
         return EngineChoice("open", True, open_reason)
     return EngineChoice("open", False, f"nova: {nova_reason}; open: {open_reason}")

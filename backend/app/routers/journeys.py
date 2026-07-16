@@ -54,14 +54,17 @@ def create_journey(
 
     engine = resolve_engine()
     text_llm = resolve_llm(request, user_id, "text")
-    can_run = engine.executable and engine.name == "open" and text_llm is not None
+    # Premium nova (Amazon model) needs no BYOK model; every other path (open,
+    # keyless nova-compat) needs the caller's BYOK text model.
+    from backend.app.engines.nova_engine import nova_sdk_available
+
+    premium_nova = engine.name == "nova" and nova_sdk_available()
+    can_run = engine.executable and (premium_nova or text_llm is not None)
     warnings = []
     if not engine.executable:
         warnings.append(f"engine '{engine.name}' not executable: {engine.reason}")
-    elif engine.name == "open" and text_llm is None:
+    elif not premium_nova and text_llm is None:
         warnings.append("no BYOK text model configured (headers or /api/account/llm-config); run queued")
-    elif engine.name == "nova":
-        warnings.append("nova engine execution adapter pending (spec §17.3 phase 5); run queued")
 
     run = {
         "status": "starting" if can_run else "queued",
@@ -84,6 +87,7 @@ def create_journey(
 
     job_id = None
     if can_run:
+        from backend.app.engines.nova_engine import run_journey_nova
         from backend.app.engines.open_engine import run_journey
         from backend.app.jobs import submit
         from backend.app.llm import chat_sync
@@ -105,7 +109,12 @@ def create_journey(
                 warnings.append("vision_mode set but no BYOK vision model; using DOM text mode")
 
         def worker() -> None:
-            run_journey(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
+            if engine.name == "nova":
+                # Premium (Amazon model) when keyed; keyless nova-compat runs
+                # the same BYOK loop — neither blocks on the API key.
+                run_journey_nova(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
+            else:
+                run_journey(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
             # Auto-close the loop (spec §16.1): when this run completes and ≥2
             # completed runs share the goal, build the analysis + decisions.
             if run.get("status") == "completed":
