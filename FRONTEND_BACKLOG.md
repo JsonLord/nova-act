@@ -108,6 +108,15 @@ hub ref — the code-runner over derive_steering); layer-2 profiles CRUD `/api/s
 and `POST /api/steering/apply` (declarative override merge, validated against an allow-list);
 journeys accept `steering_overrides` / `steering_profile_id`.
 
+### Persona Overview graph (DataHub view 2) — ✅ built
+`PersonaOverviewGraph` adapts the Mindwalk graph rendering to the *imported* persona hub: nodes
+are personas (sized by social-tie degree), edges are OASIS ties, colour groups the cohort by a
+switchable dimension (profession / country / brand affinity / age band) into arcs so the audience
+composition is legible. Selecting a persona reveals its profile and its **read-only, backend-owned**
+discovered steering (badged). Reads `/api/v1/personas` (hub list) + `/api/personas/{hub}/graph`.
+(The old DataHub "Deploy" view moved to the **Dev** tab, where OAuth/MCP/BYOK/perception config
+belongs.)
+
 ### Supporting panels (same tab)
 - **Figma import**: `POST /api/connectors/figma/import` (file_key + token) → frame inventory +
   render thumbnails.
