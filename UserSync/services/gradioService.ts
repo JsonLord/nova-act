@@ -1,30 +1,37 @@
-// Re-written to use the new REST API at https://auxteam-usersyncui.hf.space
-const API_BASE_URL = "https://auxteam-usersyncui.hf.space";
+// Same-origin FastAPI endpoints: the UserSync Space frontend is served by
+// this repo's backend (backend/app/routers/usersync_compat.py), so every
+// call below lands on our own /api/v1 + /api/tabs compat pack — no upstream
+// proxy, no external Space.
+const API_BASE_URL = "";
 
 export class GradioService {
-  // Use HF Token from environment if available
   private static getHeaders() {
-    const token = (import.meta as any).env?.VITE_HF_TOKEN || null;
-    const headers: Record<string, string> = {
+    return {
       "Content-Type": "application/json",
       "Accept": "application/json"
     };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-    return headers;
   }
 
   static async identifyPersonas(context: string) {
-    // Deprecated? Just returns context for now to not break apps that might expect a string
-    console.warn("identifyPersonas is no longer supported directly by the REST API.");
-    return context;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tabs/identify-personas/run`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ context })
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = await response.json();
+      return data.result;
+    } catch (error) {
+      console.error("Error identifying personas:", error);
+      return context;
+    }
   }
 
   static async startSimulationAsync(simulationId: string, contentText: string, format: string = "text") {
     try {
-      // simulationId in the old code might have been the focus group ID.
-      // Let's assume simulationId is the focus_group_id
+      // simulationId is the focus-group id (or display name; the backend
+      // resolves either and falls back to the latest generated group).
       const payload = {
         focus_group_id: simulationId,
         content_type: format,
@@ -43,11 +50,7 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // Returns a SimulationResponse object: { job_id, status, message, ... }
-      return data.job_id; // old code expected job/simulation id as string return?
-      // Actually old code expects the data. Let's return the job_id as string because in ChatPage it does:
-      // const result = await GradioService.startSimulationAsync(simulationId, msg);
-      // Wait, let's look at ChatPage lines 185-195
+      return data.job_id;
     } catch (error) {
       console.error("Error starting simulation:", error);
       throw error;
@@ -64,9 +67,7 @@ export class GradioService {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      // Returns { job_id, status, message, progress_percentage, results }
-      return data;
+      return await response.json();
     } catch (error) {
       console.error("Error getting simulation status:", error);
       throw error;
@@ -74,14 +75,24 @@ export class GradioService {
   }
 
   static async generateVariants(contentText: string, numVariants: number = 3) {
-    // This endpoint doesn't exist in the openapi spec.
-    console.warn("generateVariants is no longer supported by the REST API.");
-    return ["Variant generation not supported."];
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tabs/variants/run`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ content_text: contentText, num_variants: numVariants })
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = await response.json();
+      return (data.result?.variants || []).map((v: any) => v.content);
+    } catch (error) {
+      console.error("Error generating variants:", error);
+      return ["Variant generation failed."];
+    }
   }
 
   static async listSimulations() {
     try {
-      // Returns focus groups from the personas endpoint
+      // Focus groups double as simulation targets.
       const response = await fetch(`${API_BASE_URL}/api/v1/personas`, {
         headers: this.getHeaders()
       });
@@ -91,10 +102,6 @@ export class GradioService {
       }
 
       const data = await response.json();
-      // The old code returned an array of strings.
-      // API returns: { focus_groups: [ {id, name, agent_count} ] }
-      // We will map this to an array of names or IDs.
-      // We need to see how `listSimulations` is used.
       return data.focus_groups || [];
     } catch (error) {
       console.error("Error listing simulations/personas:", error);
@@ -120,9 +127,7 @@ export class GradioService {
         throw new Error(`API error: ${response.status}`);
       }
 
-      const data = await response.json();
-      // returns SimulationResponse { job_id, status }
-      return data;
+      return await response.json();
     } catch (error) {
       console.error("Error generating personas:", error);
       throw error;
@@ -130,13 +135,31 @@ export class GradioService {
   }
 
   static async generateSocialNetwork(name: string, personaCount: number = 10, networkType: string = "scale_free", focusGroupName: string | null = null) {
-    console.warn("generateSocialNetwork is subsumed by persona generation or not supported.");
-    return { status: "Network generated" };
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/tabs/social-network/run`, {
+        method: "POST",
+        headers: this.getHeaders(),
+        body: JSON.stringify({ name, persona_count: personaCount, network_type: networkType, focus_group_name: focusGroupName })
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = await response.json();
+      return data.result;
+    } catch (error) {
+      console.error("Error generating social network:", error);
+      return { status: "Network request failed" };
+    }
   }
 
   static async getNetworkGraph(simulationId: string) {
-    // Not supported
-    console.warn("getNetworkGraph is not supported by the REST API.");
-    return null;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/network/${encodeURIComponent(simulationId)}`, {
+        headers: this.getHeaders()
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      console.warn("getNetworkGraph failed:", error);
+      return null;
+    }
   }
 }

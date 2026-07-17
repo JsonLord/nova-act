@@ -7,6 +7,7 @@ interface SimulationPageProps {
   onBack: () => void;
   onOpenChat: () => void;
   onOpenGuide: () => void;
+  onOpenApiTabs?: () => void;
   user?: any;
   onLogin?: () => void;
   onLogout?: () => void;
@@ -45,7 +46,7 @@ const VIEW_FILTERS: Record<string, Array<{ label: string; color: string }>> = {
 };
 
 const SimulationPage: React.FC<SimulationPageProps> = ({
-  onBack, onOpenChat, onOpenGuide, user, onLogin, onLogout, simulationResult, setSimulationResult
+  onBack, onOpenChat, onOpenGuide, onOpenApiTabs, user, onLogin, onLogout, simulationResult, setSimulationResult
 }) => {
   const [society, setSociety] = useState('');
   const [societies, setSocieties] = useState<string[]>([]);
@@ -285,6 +286,7 @@ const SimulationPage: React.FC<SimulationPageProps> = ({
 
            <MenuItem icon={<MessageSquare size={16}/>} label="Leave Feedback" onClick={() => setActiveModal('feedback')} />
            <MenuItem icon={<BookOpen size={16}/>} label="Product Guide" onClick={onOpenGuide} />
+           {onOpenApiTabs && <MenuItem icon={<BookOpen size={16}/>} label="API Tabs 1-10" onClick={onOpenApiTabs} />}
            {user && <MenuItem icon={<LogOut size={16}/>} label="Log Out" onClick={onLogout} />}
            
            <div className="pt-4 text-[10px] text-gray-600">Version 2.1</div>

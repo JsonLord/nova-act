@@ -11,6 +11,13 @@
 > index, auto-scroll active card, skeleton loaders, prefers-reduced-motion; per-tab promise lines
 > from branding.ts). Remaining: URL routing/deep-links, and deeper per-tab polish.
 
+> **UserSync tab (Tab 1):** now exactly the Leon4gr45/UserSync Space frontend — views
+> Simulation (default), Overview (Space landing), Chat, Guide, and API Tabs 1-10 — with every
+> call wired same-origin to this repo's FastAPI via the `usersync` compat pack
+> (`backend/app/routers/usersync_compat.py`): `/api/v1/personas[/generate]`,
+> `/api/v1/simulations`, `/api/v1/network/{group}`, `/api/tabs/*/run`, `/api/user`,
+> `/api/save-data`, `/api/craft` (BYOK-only). No upstream proxy remains.
+
 Backend capabilities that have landed ahead of their UI. Each item is a frontend surface to build
 against an existing, tested API. Grouped by tab (spec.md §3).
 

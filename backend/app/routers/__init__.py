@@ -16,6 +16,7 @@ from backend.app.routers import (
     personas,
     social,
     steering,
+    usersync_compat,
     uxchain,
 )
 
@@ -31,4 +32,7 @@ PACKS = {
     "uxchain": [uxchain.router],
     "account": [account.router],
     "jobs": [jobs.router],
+    # Same-origin surface for the Leon4gr45/UserSync Space frontend
+    # (/api/v1/*, /api/tabs/*, /api/user, /api/craft, save/list-data).
+    "usersync": [usersync_compat.router],
 }

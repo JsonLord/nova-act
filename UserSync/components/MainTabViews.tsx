@@ -1,10 +1,19 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Activity, Bot, Braces, Code2, Database, GitBranch, Globe2, KeyRound, Network, ShieldCheck, Sparkles, TerminalSquare } from 'lucide-react';
-import LandingTab from './LandingTab';
 import SimulationPage from './SimulationPage';
 import ChatPage from './ChatPage';
-import PersonaBuilderTab from './PersonaBuilderTab';
-import ContentCraftTab from './ContentCraftTab';
+import ApiTabsPage from './ApiTabsPage';
+import ProductGuide from './ProductGuide';
+import Hero from './Hero';
+import TrustedBy from './TrustedBy';
+import ProductOverview from './ProductOverview';
+import InteractiveDemo from './InteractiveDemo';
+import UseCases from './UseCases';
+import HowItWorks from './HowItWorks';
+import Accuracy from './Accuracy';
+import Documentation from './Documentation';
+import FAQ from './FAQ';
+import Footer from './Footer';
 import BrowserAutomationTab from './BrowserAutomationTab';
 import QaTestingTab from './QaTestingTab';
 import DataExtractionTab from './DataExtractionTab';
@@ -15,7 +24,6 @@ const RealNetworkGraph = lazy(() => import('./RealNetworkGraph'));
 import SubViewSlider, { SubView } from './SubViewSlider';
 import { getApiSpec, publishTabEvent } from '../services/tabBus';
 import MindwalkGraphView from './MindwalkGraphView';
-import PersonaHubTab from './PersonaHubTab';
 import UxMentorChain from './UxMentorChain';
 import JourneyConsole from './JourneyConsole';
 import RenderFlow from './RenderFlow';
@@ -40,11 +48,14 @@ interface MainTabViewsProps {
 }
 
 const viewsByTab: Record<MainTabId, SubView[]> = {
+  // The usersync tab is the Leon4gr45/UserSync Space frontend, verbatim views
+  // (simulation-first), wired to this FastAPI backend's /api/v1 compat pack.
   usersync: [
-    { id: 'overview', label: 'Overview', description: 'Landing, use cases, pricing, and product proof.' },
-    { id: 'simulation', label: 'Simulation', description: 'Run audience sync and inspect results.' },
-    { id: 'personas', label: 'Personas', description: 'Sort and build focus-group personas.' },
-    { id: 'content', label: 'Content Craft', description: 'Generate and evaluate variants.' },
+    { id: 'simulation', label: 'Simulation', description: 'Assemble focus groups and run audience sync.' },
+    { id: 'overview', label: 'Overview', description: 'Landing, use cases, and product proof.' },
+    { id: 'chat', label: 'Chat', description: 'Test content against the simulated group.' },
+    { id: 'guide', label: 'Guide', description: 'The product guide.' },
+    { id: 'api', label: 'API Tabs', description: 'Ten same-origin FastAPI tabs, runnable in-app.' },
   ],
   'nova-act': [
     { id: 'console', label: 'Nova Console', description: 'Run persona-steered journeys, watch steps and thinking live.' },
@@ -125,8 +136,24 @@ const DevApiDocs = () => {
 };
 
 const DEFAULT_VIEW: Record<MainTabId, string> = {
-  usersync: 'overview', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering',
+  usersync: 'simulation', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering',
 };
+
+// The Space's landing page, composed exactly as Leon4gr45/UserSync renders it.
+const SpaceLanding: React.FC<{ onStart: () => void }> = ({ onStart }) => (
+  <div className="bg-black text-white selection:bg-teal-500/30">
+    <Hero onStart={onStart} />
+    <TrustedBy />
+    <ProductOverview />
+    <InteractiveDemo />
+    <UseCases />
+    <HowItWorks />
+    <Accuracy />
+    <Documentation />
+    <FAQ />
+    <Footer />
+  </div>
+);
 
 const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
   const tabViews = viewsByTab[props.tab];
@@ -150,10 +177,11 @@ const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
   };
   const content = useMemo(() => {
     if (props.tab === 'usersync') {
-      if (activeView === 'simulation') return <SimulationPage onBack={() => setActiveView('overview')} onOpenChat={() => setActiveView('content')} onOpenGuide={props.onOpenGuide} user={props.user} onLogin={props.onLogin} onLogout={props.onLogout} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} />;
-      if (activeView === 'personas') return <><PersonaHubTab /><PersonaBuilderTab /></>;
-      if (activeView === 'content') return <><ChatPage onBack={() => setActiveView('simulation')} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} /><ContentCraftTab /></>;
-      return <LandingTab onTabChange={() => setActiveView('simulation')} />;
+      if (activeView === 'simulation') return <SimulationPage onBack={() => setActiveView('overview')} onOpenChat={() => setActiveView('chat')} onOpenGuide={() => setActiveView('guide')} onOpenApiTabs={() => setActiveView('api')} user={props.user} onLogin={props.onLogin} onLogout={props.onLogout} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} />;
+      if (activeView === 'chat') return <ChatPage onBack={() => setActiveView('simulation')} simulationResult={props.simulationResult} setSimulationResult={props.setSimulationResult} />;
+      if (activeView === 'guide') return <ProductGuide />;
+      if (activeView === 'api') return <ApiTabsPage onBack={() => setActiveView('simulation')} />;
+      return <SpaceLanding onStart={() => setActiveView('simulation')} />;
     }
     if (props.tab === 'nova-act') return activeView === 'console' ? <JourneyConsole /> : activeView === 'studio' ? <NovaStudio /> : activeView === 'browser' ? <BrowserAutomationTab /> : activeView === 'qa' ? <QaTestingTab /> : activeView === 'ux-chain' ? <UxMentorChain /> : activeView === 'mindwalk' ? <MindwalkGraphView activeTab="nova-act" activeView="mindwalk" /> : <UiVerificationTab />;
     if (props.tab === 'datahub') return activeView === 'render' ? <RenderFlow /> : activeView === 'extract' ? <DataExtractionTab /> : activeView === 'deploy' ? <DeploymentTab /> : <SimplePanel title="DataHub Warehouse" icon={Database}>Saved records, simulation outputs, and browser traces are sorted here before being published to downstream tabs over <code>/api/tabs/events</code>.</SimplePanel>;
