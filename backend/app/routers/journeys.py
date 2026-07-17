@@ -1,0 +1,247 @@
+"""Journey & Nova Act Runtime API: persona-steered journey runs.
+
+Runs execute through the nova_act SDK when it is installed and configured
+(NOVA_ACT_API_KEY); otherwise runs are stored as `queued` with the fully
+composed act() prompt and steering config, so the contract is exercisable
+on any deployment.
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+
+from backend.app.envelope import envelope
+from backend.app.quota import charge, get_user_id
+from backend.app.storage import load_artifact, save_artifact
+
+router = APIRouter(prefix="/api/journeys", tags=["journeys"])
+
+
+class JourneyRequest(BaseModel):
+    target_url: str
+    goal: str
+    persona_hub_id: str = ""
+    persona_index: int = 0
+    vision_mode: bool = False  # decide from annotated screenshots (needs vision slot)
+    # Second-layer (authored) steering — developer overrides for this test case.
+    steering_overrides: dict = {}
+    steering_profile_id: str = ""
+
+
+@router.post("", operation_id="journeys_create")
+def create_journey(
+    body: JourneyRequest,
+    request: Request,
+    user_id: str = Depends(get_user_id),
+    meter: dict = Depends(charge("journey_runs", cost=10)),
+):
+    steering: dict | None = None
+    act_prompt = body.goal
+    if body.persona_hub_id:
+        hub = load_artifact(user_id, "personas", body.persona_hub_id)
+        if hub is None:
+            raise HTTPException(status_code=404, detail="persona hub not found")
+        from backend.app.routers.personas import _rebuild_persona
+        from oasis.generator.steering import build_act_prompt, derive_steering
+
+        personas = hub["data"]["personas"]
+        if not 0 <= body.persona_index < len(personas):
+            raise HTTPException(status_code=404, detail="persona index out of range")
+        persona = _rebuild_persona(personas[body.persona_index])
+        steering = derive_steering(persona, goal=body.goal).to_dict()
+        act_prompt = build_act_prompt(persona, body.goal)
+
+    # Second-layer (authored) steering: merge developer overrides / profile
+    # onto the discovered config so a test case can bend the derived behaviour.
+    overrides = dict(body.steering_overrides)
+    if body.steering_profile_id:
+        profile = load_artifact(user_id, "steering", body.steering_profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="steering profile not found")
+        overrides = {**profile["data"].get("overrides", {}), **overrides}
+    if overrides:
+        from backend.app.steering_apply import OverrideError, apply_overrides
+
+        if steering is None:
+            raise HTTPException(status_code=422, detail="steering_overrides need a persona_hub_id")
+        try:
+            steering = apply_overrides(steering, overrides)
+        except OverrideError as error:
+            raise HTTPException(status_code=422, detail=str(error))
+
+    from backend.app.engines import resolve_engine
+    from backend.app.llm_config import resolve_llm
+
+    engine = resolve_engine()
+    text_llm = resolve_llm(request, user_id, "text")
+    # Premium nova (Amazon model) needs no BYOK model; every other path (open,
+    # keyless nova-compat) needs the caller's BYOK text model.
+    from backend.app.engines.nova_engine import nova_sdk_available
+
+    premium_nova = engine.name == "nova" and nova_sdk_available()
+    can_run = engine.executable and (premium_nova or text_llm is not None)
+    warnings = []
+    if not engine.executable:
+        warnings.append(f"engine '{engine.name}' not executable: {engine.reason}")
+    elif not premium_nova and text_llm is None:
+        warnings.append("no BYOK text model configured (headers or /api/account/llm-config); run queued")
+
+    run = {
+        "status": "starting" if can_run else "queued",
+        "target_url": body.target_url,
+        "goal": body.goal,
+        "act_prompt": act_prompt,
+        "steering": steering,
+        "executable": can_run,
+        "steps": [],
+    }
+    provenance = {
+        "persona_hub_id": body.persona_hub_id,
+        "persona_index": body.persona_index,
+        "engine": engine.name,
+        "engine_status": engine.reason,
+        "llm": f"{text_llm.provider}/{text_llm.model}" if text_llm else None,
+        "vision_mode": body.vision_mode,
+    }
+    record = save_artifact(user_id, "journeys", "journey_run", run, provenance=provenance)
+
+    job_id = None
+    if can_run:
+        from backend.app.engines.nova_engine import run_journey_nova
+        from backend.app.engines.open_engine import run_journey
+        from backend.app.jobs import submit
+        from backend.app.llm import chat_sync
+
+        def llm_call(system: str, user: str) -> str:
+            return chat_sync(text_llm, user, system=system, temperature=0.2)
+
+        # Vision mode: resolve the vision slot; decides from annotated shots.
+        vision_call = None
+        if body.vision_mode:
+            from backend.app.llm_config import resolve_llm
+
+            vision_llm = resolve_llm(request, user_id, "vision")
+            if vision_llm is not None:
+                vision_call = lambda s, u, img: chat_sync(  # noqa: E731
+                    vision_llm, u, system=s, images_b64=[img], temperature=0.2
+                )
+            else:
+                warnings.append("vision_mode set but no BYOK vision model; using DOM text mode")
+
+        def worker() -> None:
+            if engine.name == "nova":
+                # Premium (Amazon model) when keyed; keyless nova-compat runs
+                # the same BYOK loop — neither blocks on the API key.
+                run_journey_nova(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
+            else:
+                run_journey(user_id, record["artifact_id"], run, llm_call, provenance, vision_call=vision_call)
+            # Auto-close the loop (spec §16.1): when this run completes and ≥2
+            # completed runs share the goal, build the analysis + decisions.
+            if run.get("status") == "completed":
+                orchestrate_analysis(user_id, body.goal)
+
+        # Bounded pool: queues if browser sessions are saturated (spec §17.4).
+        job_id = submit(user_id, "journey", worker, target_artifact_id=record["artifact_id"])
+
+    return envelope(
+        data={**run, "job_id": job_id},
+        artifact_id=record["artifact_id"],
+        provenance=record["provenance"],
+        quota=meter,
+        warnings=warnings,
+        next_actions=[
+            {"action": "analyze", "endpoint": "/api/analysis/action-trace"},
+            {"action": "ux_chain", "endpoint": "/api/ux-chain/runs"},
+        ],
+    )
+
+
+def _step_traces(run_data: dict) -> list[dict]:
+    """Reduce a run's engine steps to the analysis trace shape."""
+    return [
+        {"action": s.get("action", "wait"), "x": s.get("x") or 0.0,
+         "y": s.get("y") or 0.0, "think": s.get("think", "")}
+        for s in run_data.get("steps", [])
+    ]
+
+
+def orchestrate_analysis(user_id: str, goal: str) -> dict | None:
+    """When ≥2 completed journey runs share a goal, build the Action Trace
+    Graph and decision set automatically (spec §16.1). Returns the graph +
+    decision artifact ids, or None when there is nothing to compare yet."""
+    from backend.app.routers.analysis import build_action_trace, build_decisions
+    from backend.app.storage import list_artifacts
+
+    completed = []
+    for entry in list_artifacts(user_id, "journeys"):
+        record = load_artifact(user_id, "journeys", entry["artifact_id"])
+        data = record["data"] if record else {}
+        if data.get("status") == "completed" and data.get("goal") == goal and data.get("steps"):
+            completed.append(
+                {
+                    "run_id": entry["artifact_id"],
+                    "persona_id": record["provenance"].get("persona_hub_id", ""),
+                    "steps": _step_traces(data),
+                }
+            )
+    if len(completed) < 2:
+        return None
+    graph = build_action_trace(user_id, completed)
+    decisions = build_decisions(user_id, graph["artifact_id"])
+    return {
+        "action_trace_graph_id": graph["artifact_id"],
+        "decision_set_id": decisions["artifact_id"] if decisions else None,
+        "runs_compared": len(completed),
+    }
+
+
+@router.post("/analyze", operation_id="journeys_analyze")
+def analyze_goal(goal: str, user_id: str = Depends(get_user_id)):
+    """Manually trigger the same orchestration for a goal's completed runs."""
+    result = orchestrate_analysis(user_id, goal)
+    if result is None:
+        return envelope(data={"runs_compared": 0}, warnings=["fewer than 2 completed runs for this goal"])
+    return envelope(
+        data=result,
+        next_actions=[{"action": "graph_qa", "endpoint": "/api/graph-research/qa"}],
+    )
+
+
+@router.get("", operation_id="journeys_list")
+def list_journeys(user_id: str = Depends(get_user_id)):
+    from backend.app.storage import list_artifacts
+
+    return envelope(data=list_artifacts(user_id, "journeys"))
+
+
+@router.get("/{run_id}", operation_id="journeys_get")
+def get_journey(run_id: str, user_id: str = Depends(get_user_id)):
+    record = load_artifact(user_id, "journeys", run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="journey run not found")
+    return envelope(data=record["data"], artifact_id=run_id, provenance=record["provenance"])
+
+
+@router.get("/{run_id}/screenshot/{step}", operation_id="journeys_screenshot")
+def get_screenshot(run_id: str, step: int, user_id: str = Depends(get_user_id)):
+    """Serve a per-step screenshot (the optically-degraded image the persona
+    saw). Paths are confined to the caller's own journey folder."""
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    from backend.app.config import get_settings
+
+    record = load_artifact(user_id, "journeys", run_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="journey run not found")
+    shots = record["data"].get("screenshots", [])
+    if not 0 <= step < len(shots):
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    path = (get_settings().data_dir / shots[step]).resolve()
+    # Path-traversal guard: must stay under this user's journey folder.
+    root = (get_settings().data_dir / "users" / user_id / "journeys").resolve()
+    if root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    return FileResponse(path, media_type="image/png")

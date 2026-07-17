@@ -1,0 +1,129 @@
+Loaded as API: https://auxteam-tiny-factory.hf.space
+Client.predict() Usage Info
+---------------------------
+Named API endpoints: 18
+
+ - predict(business_description, customer_profile, num_personas, blablador_api_key, api_name="/generate_personas") -> output_generated_or_matched_persona
+    Parameters:
+     - [Textbox] business_description: str (required)
+     - [Textbox] customer_profile: str (required)
+     - [Number] num_personas: float (not required, defaults to:   1)
+     - [Textbox] blablador_api_key: str | None (not required, defaults to:   None)
+    Returns:
+     - [Json] output_generated_or_matched_persona: str | float | bool | list | dict (any valid json)
+
+ - predict(criteria, api_name="/find_best_persona") -> output_generated_or_matched_persona
+    Parameters:
+     - [Textbox] criteria: str (required)
+    Returns:
+     - [Json] output_generated_or_matched_persona: str | float | bool | list | dict (any valid json)
+
+ - predict(context, api_name="/identify_personas") -> value_20
+    Parameters:
+     - [Textbox] context: str (required)
+    Returns:
+     - [Json] value_20: str | float | bool | list | dict (any valid json)
+
+ - predict(name, persona_count, network_type, focus_group_name, api_name="/generate_social_network") -> value_28
+    Parameters:
+     - [Textbox] name: str (required)
+     - [Number] persona_count: float (not required, defaults to:   10)
+     - [Dropdown] network_type: Literal['scale_free', 'small_world'] (not required, defaults to:   scale_free)
+     - [Textbox] focus_group_name: str | None (not required, defaults to:   None)
+    Returns:
+     - [Json] value_28: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, content_text, format, api_name="/predict_engagement") -> value_35
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+     - [Textbox] content_text: str (required)
+     - [Textbox] format: str (not required, defaults to:   text)
+    Returns:
+     - [Json] value_35: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, content_text, format, api_name="/start_simulation_async") -> value_42
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+     - [Textbox] content_text: str (required)
+     - [Textbox] format: str (not required, defaults to:   text)
+    Returns:
+     - [Json] value_42: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/get_simulation_status") -> value_45
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_45: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, sender, message, api_name="/send_chat_message") -> value_53
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+     - [Textbox] sender: str (not required, defaults to:   User)
+     - [Textbox] message: str (required)
+    Returns:
+     - [Json] value_53: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/get_chat_history") -> value_55
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_55: str | float | bool | list | dict (any valid json)
+
+ - predict(content_text, num_variants, api_name="/generate_variants") -> value_61
+    Parameters:
+     - [Textbox] content_text: str (required)
+     - [Number] num_variants: float (not required, defaults to:   5)
+    Returns:
+     - [Json] value_61: str | float | bool | list | dict (any valid json)
+
+ - predict(api_name="/list_simulations") -> value_65
+    Parameters:
+     - None
+    Returns:
+     - [Json] value_65: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/list_personas") -> value_69
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_69: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, persona_name, api_name="/get_persona") -> value_75
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+     - [Textbox] persona_name: str (required)
+    Returns:
+     - [Json] value_75: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/delete_simulation") -> value_80
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_80: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/export_simulation") -> value_85
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_85: str | float | bool | list | dict (any valid json)
+
+ - predict(simulation_id, api_name="/get_network_graph") -> value_90
+    Parameters:
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_90: str | float | bool | list | dict (any valid json)
+
+ - predict(api_name="/list_focus_groups") -> value_94
+    Parameters:
+     - None
+    Returns:
+     - [Json] value_94: str | float | bool | list | dict (any valid json)
+
+ - predict(name, simulation_id, api_name="/save_focus_group") -> value_98
+    Parameters:
+     - [Textbox] name: str (required)
+     - [Textbox] simulation_id: str (required)
+    Returns:
+     - [Json] value_98: str | float | bool | list | dict (any valid json)
+
+None
