@@ -1,5 +1,3 @@
-import { buildOmniParserTransition, buildSuiteOmniParserElements } from './omniParserAdapter';
-
 export type MindwalkTouchState = 'unvisited' | 'seen' | 'read' | 'edited' | 'limited';
 
 export interface MindwalkNode {
@@ -11,7 +9,6 @@ export interface MindwalkNode {
   y: number;
   intensity: number;
   llmPhrase: string;
-  omniParserPhrase: string;
   personaTags: string[];
   limitationIds: string[];
 }
@@ -116,7 +113,6 @@ export function buildMindwalkGraph(activeTab = 'nova-act', activeView = 'mindwal
       y,
       intensity: state === 'edited' ? 1 : 0.45,
       llmPhrase: `Workspace ${tab} maps user intent to available suite actions.`,
-      omniParserPhrase: buildOmniParserTransition(tab, buildSuiteOmniParserElements(tab, 'workspace')).llmLanguage,
       personaTags: personas.map((persona) => persona.id),
       limitationIds: limitationFunctions.filter((limitation) => limitation.injectInto.includes(tab)).map((limitation) => limitation.id),
     });
@@ -134,7 +130,6 @@ export function buildMindwalkGraph(activeTab = 'nova-act', activeView = 'mindwal
         y: y + Math.sin(angle) * 0.075,
         intensity: isActive ? 1 : tab === activeTab ? 0.7 : 0.35,
         llmPhrase: `Subview ${subview} in ${tab} is a navigable UI state that can be summarized for Nova Act prompts.`,
-        omniParserPhrase: buildOmniParserTransition(`${tab}:${subview}`, buildSuiteOmniParserElements(tab, subview)).llmLanguage,
         personaTags: personas.slice(0, 2).map((persona) => persona.id),
         limitationIds: limitationFunctions.filter((limitation) => limitation.injectInto.includes(tab)).map((limitation) => limitation.id),
       });
@@ -153,7 +148,6 @@ export function buildMindwalkGraph(activeTab = 'nova-act', activeView = 'mindwal
       y: 0.5,
       intensity: 0.8,
       llmPhrase: `${persona.label}: goals ${persona.goals.join(', ')}; constraints ${persona.limitations.join(', ')}.`,
-      omniParserPhrase: buildOmniParserTransition(persona.label, buildSuiteOmniParserElements('usersync', 'personas')).llmLanguage,
       personaTags: [id],
       limitationIds: limitationFunctions.map((limitation) => limitation.id),
     });
@@ -172,7 +166,6 @@ export function buildMindwalkGraph(activeTab = 'nova-act', activeView = 'mindwal
       y: 0.94,
       intensity: 0.95,
       llmPhrase: limitation.guardrail,
-      omniParserPhrase: buildOmniParserTransition(limitation.label, buildSuiteOmniParserElements('nova-act', 'mindwalk')).llmLanguage,
       personaTags: personas.map((persona) => persona.id),
       limitationIds: [id],
     });
@@ -188,5 +181,5 @@ export function buildMindwalkGraph(activeTab = 'nova-act', activeView = 'mindwal
 export function buildNovaActPrompt(node: MindwalkNode): string {
   const personaContext = node.personaTags.join(', ') || 'general operator';
   const limitations = node.limitationIds.join(', ') || 'default-safe-navigation';
-  return `OmniParser UI-to-LLM parse: ${node.omniParserPhrase} Mindwalk navigation memory: ${node.llmPhrase} Persona context: ${personaContext}. Inject limitation functions: ${limitations}.`;
+  return `Mindwalk navigation memory: ${node.llmPhrase} Persona context: ${personaContext}. Inject limitation functions: ${limitations}.`;
 }

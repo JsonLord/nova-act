@@ -45,11 +45,11 @@ const MindwalkGraphView: React.FC<MindwalkGraphViewProps> = ({ activeTab = 'nova
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-indigo-200">
-              <BrainCircuit size={14} /> Mindwalk + OmniParser adapter
+              <BrainCircuit size={14} /> Mindwalk navigation memory
             </div>
-            <h2 className="text-4xl font-semibold tracking-tight">Parse UI into LLM language, then steer navigation.</h2>
+            <h2 className="text-4xl font-semibold tracking-tight">Remember where the agent has been, then steer navigation.</h2>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-300">
-              Mindwalk keeps the navigation graph and touch-state memory; OmniParser is the UI-to-LLM transitioner that converts screen elements into grounded language Nova Act can use for actions and guardrails.
+              Mindwalk keeps the navigation graph and touch-state memory: which views were seen, read, or edited, and which limitation functions apply where. (DOM and visual recognition — including OmniParser — happen in the journey perception pipeline, not here.)
             </p>
           </div>
           <button onClick={injectLimitations} className="rounded-2xl bg-indigo-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-950/40 transition hover:bg-indigo-400">
@@ -83,9 +83,9 @@ const MindwalkGraphView: React.FC<MindwalkGraphViewProps> = ({ activeTab = 'nova
 
         <div className="space-y-4">
           <div className="rounded-3xl border border-gray-800 bg-[#0b0b0b] p-6">
-            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-teal-300"><GitBranch size={16} /> Selected OmniParser UI-to-LLM node</div>
+            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-teal-300"><GitBranch size={16} /> Selected navigation node</div>
             <h3 className="text-2xl font-bold capitalize">{selected.label}</h3>
-            <p className="mt-3 text-sm leading-6 text-gray-300">{selected.llmPhrase}</p><p className="mt-2 text-xs leading-5 text-indigo-200">{selected.omniParserPhrase}</p>
+            <p className="mt-3 text-sm leading-6 text-gray-300">{selected.llmPhrase}</p>
             <pre className="mt-4 max-h-52 overflow-auto rounded-2xl border border-gray-800 bg-black p-4 text-xs text-indigo-100 whitespace-pre-wrap">{prompt}</pre>
           </div>
 
