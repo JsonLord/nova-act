@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { GitBranch, MessagesSquare, Sparkles } from 'lucide-react';
 import { api, apiData } from '../services/api';
+import { useLlmConfig } from '../services/useLlmConfig';
+import ModelGate from './ModelGate';
 
 /** Action Trace analysis: build a similarity graph from two demo runs, blend
  * the heatmap/thinking channels, and ask the graph AI questions. */
@@ -24,6 +26,7 @@ const AnalysisGraph: React.FC = () => {
   const [decisions, setDecisions] = useState<any[]>([]);
   const [qa, setQa] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
+  const llm = useLlmConfig();
 
   const build = async () => {
     setBusy(true);
@@ -105,7 +108,8 @@ const AnalysisGraph: React.FC = () => {
               <div className="flex items-center gap-2 text-xs font-bold uppercase text-teal-400"><MessagesSquare size={14} /> Graph Answers</div>
               <button onClick={askGraph} className="rounded-lg bg-gray-800 px-2.5 py-1 text-[10px] font-bold hover:bg-gray-700">Ask</button>
             </div>
-            {qa.length === 0 ? <p className="text-[11px] text-gray-600">Ask the graph for grounded Q&A.</p> : qa.map((item, i) => (
+            {!llm.textConfigured && <div className="mb-2"><ModelGate modality="text" loggedIn={llm.loggedIn} what="AI answers" /></div>}
+            {qa.length === 0 ? <p className="text-[11px] text-gray-600">Ask the graph for grounded Q&A {llm.textConfigured ? '(LLM-generated)' : '(templated without a model)'}.</p> : qa.map((item, i) => (
               <div key={i} className="mb-3">
                 <div className="text-[11px] font-bold text-gray-200">{item.question}</div>
                 <div className="mt-1 text-[10px] text-gray-400">{item.answer}</div>

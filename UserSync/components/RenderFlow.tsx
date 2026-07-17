@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Boxes, Database, Figma, Radio, Share2, Sparkles, Users, Zap } from 'lucide-react';
 import { api, apiData } from '../services/api';
+import { useLlmConfig } from '../services/useLlmConfig';
+import ModelGate from './ModelGate';
 
 /**
  * DataHub Render Flow (Phase 3): source flow diagram with green-lightning
@@ -72,17 +74,21 @@ const RenderFlow: React.FC = () => {
   const [target, setTarget] = useState(0);
   const [rendering, setRendering] = useState(false);
   const [enriching, setEnriching] = useState(false);
+  const [enrichNote, setEnrichNote] = useState('');
   const [selected, setSelected] = useState<Node | null>(null);
+  const llm = useLlmConfig();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const enrich = async () => {
     setEnriching(true);
+    setEnrichNote('');
     try {
-      await api(`/api/personas/${hubId}/enrich`, { body: { batch_size: 10, concurrency: 8 } });
+      const env = await api(`/api/personas/${hubId}/enrich`, { body: { batch_size: 10, concurrency: 8 } });
       const graph = await apiData(`/api/personas/${hubId}/graph`);
       setNodes(graph.nodes || []);
-    } catch {
-      /* enrichment needs a BYOK text model; leave templated text */
+      setEnrichNote(`Enriched ${env.data.enriched} personas · ${env.data.llm_calls} LLM calls · ${env.data.llm}`);
+    } catch (e: any) {
+      setEnrichNote(e.status === 422 ? 'Configure a BYOK text model to enrich (Dev → settings).' : e.message);
     } finally {
       setEnriching(false);
     }
@@ -198,13 +204,18 @@ const RenderFlow: React.FC = () => {
                 {!rendering && hubId && (
                   <button
                     onClick={enrich}
-                    disabled={enriching}
-                    className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300 transition hover:bg-violet-500/20"
+                    disabled={enriching || !llm.textConfigured}
+                    title={llm.textConfigured ? 'LLM-enrich persona text & opinions' : 'Needs a BYOK text model'}
+                    className="rounded-lg border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-[10px] font-bold text-violet-300 transition hover:bg-violet-500/20 disabled:opacity-40"
                   >
                     {enriching ? 'Enriching…' : '✨ Enrich (LLM)'}
                   </button>
                 )}
               </div>
+              {!rendering && hubId && !llm.textConfigured && (
+                <div className="mb-2"><ModelGate modality="text" loggedIn={llm.loggedIn} what="Enrich" /></div>
+              )}
+              {enrichNote && <div className="mb-2 text-[10px] text-violet-300">{enrichNote}</div>}
               <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
                 {nodes.map((node) => (
                   <button

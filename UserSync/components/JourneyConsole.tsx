@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLlmConfig } from '../services/useLlmConfig';
 import { Bot, CircleDot, History, MousePointerClick, Play, RefreshCw, Sparkles } from 'lucide-react';
 
 /**
@@ -84,7 +85,9 @@ const JourneyConsole: React.FC = () => {
   const [url, setUrl] = useState('https://example.com');
   const [goal, setGoal] = useState('');
   const [personaHubId, setPersonaHubId] = useState('');
+  const [visionMode, setVisionMode] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const llm = useLlmConfig();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadRuns = () =>
@@ -132,6 +135,7 @@ const JourneyConsole: React.FC = () => {
         body: JSON.stringify({
           target_url: url,
           goal,
+          vision_mode: visionMode,
           ...(personaHubId ? { persona_hub_id: personaHubId, persona_index: 0 } : {}),
         }),
       });
@@ -227,6 +231,16 @@ const JourneyConsole: React.FC = () => {
               placeholder="persona hub id (optional — steers the agent)"
               className="flex-1 rounded-xl border border-gray-800 bg-black p-2.5 text-xs font-mono outline-none focus:border-teal-500"
             />
+            <button
+              onClick={() => setVisionMode((v) => !v)}
+              disabled={!llm.visionConfigured}
+              title={llm.visionConfigured ? 'Decide from screenshots (vision model)' : 'Needs a BYOK vision model'}
+              className={`rounded-xl border px-3 text-[11px] font-bold transition disabled:opacity-40 ${
+                visionMode ? 'border-violet-500 bg-violet-500/15 text-violet-300' : 'border-gray-800 bg-black text-gray-400 hover:border-gray-700'
+              }`}
+            >
+              👁 Vision
+            </button>
           </div>
           <div className="flex gap-2">
             <input

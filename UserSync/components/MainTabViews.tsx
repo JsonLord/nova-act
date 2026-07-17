@@ -29,6 +29,8 @@ export type MainTabId = 'usersync' | 'nova-act' | 'datahub' | 'oasis' | 'graph' 
 
 interface MainTabViewsProps {
   tab: MainTabId;
+  routeView?: string;
+  onNavigate?: (tab: string, view?: string) => void;
   onOpenGuide: () => void;
   user: any;
   onLogin: () => void;
@@ -122,18 +124,28 @@ const DevApiDocs = () => {
   return <SimplePanel title="Developer API Documentation" icon={Code2}><p className="mb-4">FastAPI-compatible OpenAPI is exposed in-app so every tab can discover backend actions.</p><pre className="max-h-[520px] overflow-auto rounded-2xl border border-gray-800 bg-black p-4 text-xs text-teal-100">{JSON.stringify(spec || { loading: '/api/openapi.json' }, null, 2)}</pre></SimplePanel>;
 };
 
+const DEFAULT_VIEW: Record<MainTabId, string> = {
+  usersync: 'overview', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering',
+};
+
 const MainTabViews: React.FC<MainTabViewsProps> = (props) => {
-  const [activeViews, setActiveViews] = useState<Record<string, string>>({ usersync: 'overview', 'nova-act': 'console', datahub: 'render', oasis: 'mirror', graph: 'analysis', dev: 'steering' });
-  // Direction of the last view change → directional slide (spec §11): moving to
-  // a higher-index subview slides in from the right, lower from the left.
+  const tabViews = viewsByTab[props.tab];
+  // URL is the source of truth for the view; fall back to the tab default.
+  const routed = props.routeView && tabViews.some((v) => v.id === props.routeView) ? props.routeView : DEFAULT_VIEW[props.tab];
+  const [activeView, setLocalView] = useState<string>(routed);
   const [direction, setDirection] = useState<1 | -1>(1);
-  const activeView = activeViews[props.tab] || viewsByTab[props.tab][0].id;
+
+  // Sync from the URL when it changes (back/forward, deep link, tab switch).
+  useEffect(() => {
+    setLocalView(routed);
+  }, [routed]);
+
   const setActiveView = (view: string) => {
-    const views = viewsByTab[props.tab];
-    const from = views.findIndex((v) => v.id === activeView);
-    const to = views.findIndex((v) => v.id === view);
+    const from = tabViews.findIndex((v) => v.id === activeView);
+    const to = tabViews.findIndex((v) => v.id === view);
     setDirection(to >= from ? 1 : -1);
-    setActiveViews((prev) => ({ ...prev, [props.tab]: view }));
+    setLocalView(view);
+    props.onNavigate?.(props.tab, view); // deep-linkable
     publishTabEvent({ source: 'frontend', target: props.tab, action: 'view.changed', payload: { view } });
   };
   const content = useMemo(() => {

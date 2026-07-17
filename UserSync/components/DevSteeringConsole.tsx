@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Code2, FlaskConical, History, Lock, Play, RotateCcw, Sliders, Terminal } from 'lucide-react';
+import { Code2, FlaskConical, History, Lock, Play, RotateCcw, Sliders, Sparkles, Terminal } from 'lucide-react';
 import { api, apiData } from '../services/api';
+import { useLlmConfig } from '../services/useLlmConfig';
+import ModelGate from './ModelGate';
 
 /**
  * Developer steering console (Dev tab). Honors the two-layer differentiation:
@@ -49,7 +51,10 @@ const DevSteeringConsole: React.FC = () => {
   const [corrValue, setCorrValue] = useState('99');
   const [corrReason, setCorrReason] = useState('reviewer override');
   const [corrLog, setCorrLog] = useState<any[]>([]);
+  const [autofill, setAutofill] = useState<any>(null);
+  const [autofillNote, setAutofillNote] = useState('');
   const [err, setErr] = useState('');
+  const llm = useLlmConfig();
 
   const seedHub = async () => {
     const env = await api('/api/personas/generate', { body: { company_name: 'Dev', count: 6, seed: 1 } });
@@ -101,6 +106,17 @@ const DevSteeringConsole: React.FC = () => {
       setEffective(data.effective_steering);
     } catch (e: any) {
       setErr(e.message);
+    }
+  };
+
+  const runAutofill = async () => {
+    setAutofillNote('');
+    try {
+      const data = await apiData('/api/steering/autofill', { body: { persona_hub_id: hubId, persona_index: personaIndex, goal: 'Find and buy a product' } });
+      setAutofill(data);
+      setAutofillNote(data.provenance?.llm ? `composed by ${data.provenance.llm}` : 'deterministic values (no LLM)');
+    } catch (e: any) {
+      setAutofillNote(e.message);
     }
   };
 
@@ -204,6 +220,24 @@ const DevSteeringConsole: React.FC = () => {
           {effective && (
             <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-gray-800 bg-black p-2 text-[9px] text-gray-300">
               {JSON.stringify(effective[ovPath.split('.')[0]]?.[ovPath.split('.')[1]], null, 1)}
+            </pre>
+          )}
+        </Section>
+
+        {/* LLM Auto-fill — composes the language rows (think-restyle, goal voice) */}
+        <Section title="Auto-fill (LLM)" icon={Sparkles} badge="composes language rows" badgeTone="bg-violet-500/10 text-violet-300">
+          <p className="mb-2 text-[10px] text-gray-500">Numbers stay deterministic; the BYOK text model composes the persona-voiced think-restyle & goal. `POST /api/steering/autofill`.</p>
+          {!llm.textConfigured ? (
+            <ModelGate modality="text" loggedIn={llm.loggedIn} what="Auto-fill" />
+          ) : (
+            <button onClick={runAutofill} className="flex items-center gap-1.5 rounded-lg bg-violet-600/80 px-3 py-1.5 text-[10px] font-bold hover:bg-violet-600">
+              <Sparkles size={11} /> Auto-fill from persona
+            </button>
+          )}
+          {autofillNote && <div className="mt-1 text-[9px] text-violet-300">{autofillNote}</div>}
+          {autofill && (
+            <pre className="mt-2 max-h-40 overflow-auto rounded-lg border border-gray-800 bg-black p-2 text-[9px] text-gray-300">
+              {JSON.stringify(autofill.thinking?.think_restyle_instruction, null, 1)}
             </pre>
           )}
         </Section>
